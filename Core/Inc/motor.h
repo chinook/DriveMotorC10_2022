@@ -145,6 +145,9 @@ uint32_t IsDriveAwake(DRIVE_MOTOR drive_index);
 
 void SetDirection(DRIVE_MOTOR drive_index, uint32_t direction);
 
+void EnableDriveIndexer(DRIVE_MOTOR drive_index);
+void EnableDriveExternalPWM(DRIVE_MOTOR drive_index);
+
 void Step(DRIVE_MOTOR drive_index);
 
 

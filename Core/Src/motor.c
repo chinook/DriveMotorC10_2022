@@ -267,13 +267,36 @@ void SetDirection(DRIVE_MOTOR drive_index, uint32_t direction)
 					  drive_pins[drive_index][DRIVE_DIR], state);
 }
 
+void EnableDriveIndexer(DRIVE_MOTOR drive_index)
+{
+	drive_regs[drive_index].off_reg.pwmmode = 0;		// Use internal indexer
+
+	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+	TransmitMotorSPI(drive_index, DRV8711_OFF_REG);
+	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+}
+
+void EnableDriveExternalPWM(DRIVE_MOTOR drive_index)
+{
+	drive_regs[drive_index].off_reg.pwmmode = 1;		// Use external PWM
+
+	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+	TransmitMotorSPI(drive_index, DRV8711_OFF_REG);
+	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+}
+
 void Step(DRIVE_MOTOR drive_index)
 {
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
 					  drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_SET);
-	HAL_Delay(2);
+	HAL_Delay(1);
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
 					  drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_RESET);
+	HAL_Delay(1);
 }
 
 

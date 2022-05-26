@@ -56,6 +56,28 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 
+enum MOTOR_MODES
+{
+	MODE_MANUAL = 0,
+	MODE_AUTOMATIC
+};
+
+extern uint8_t b_timer_flag;
+
+extern uint8_t pitch_mode;
+extern uint8_t mast_mode;
+
+extern int32_t pitch_cmd_nbr_steps;
+extern int32_t mast_cmd_dir;
+
+
+extern uint8_t can1_recv_flag;
+
+extern CAN_TxHeaderTypeDef pTxHeader;
+extern CAN_RxHeaderTypeDef pRxHeader;
+
+extern uint32_t txMailbox;
+
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

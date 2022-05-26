@@ -22,7 +22,10 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include <string.h> // memcpy
+
 #include "chinook_can_ids.h"
+
 
 #include "motor.h"
 
@@ -67,6 +70,8 @@ I2C_HandleTypeDef hi2c3;
 SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart2;
 
@@ -75,6 +80,24 @@ UART_HandleTypeDef huart2;
 // Emergency flags
 uint8_t b_rops = 0;
 uint8_t b_emergency_stop = 0;
+
+uint8_t b_timer_flag = 0;
+
+int32_t pitch_cmd_nbr_steps = 0;
+int32_t mast_cmd_dir = 0;
+
+
+uint8_t txData[8];
+uint8_t rxData[8];
+
+uint8_t can1_recv_flag = 0;
+CAN_TxHeaderTypeDef pTxHeader;
+CAN_RxHeaderTypeDef pRxHeader;
+uint32_t txMailbox;
+
+// Motor modes
+uint8_t pitch_mode = MODE_MANUAL;
+uint8_t mast_mode = MODE_MANUAL;
 
 uint32_t current_state = STATE_INIT;
 
@@ -90,6 +113,8 @@ static void MX_I2C3_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_TIM3_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 void ExecuteStateMachine();
@@ -103,6 +128,9 @@ uint32_t DoStateROPS();
 uint32_t DoStateEmergencyStop();
 
 void DoStateError();
+
+
+HAL_StatusTypeDef TransmitCAN(uint8_t id, uint8_t* buf, uint8_t size);
 
 /* USER CODE END PFP */
 
@@ -164,6 +192,16 @@ uint32_t DoStateInit()
 	b_rops = 0;
 	b_emergency_stop = 0;
 
+	b_timer_flag = 0;
+
+	pitch_cmd_nbr_steps = 0;
+	mast_cmd_dir = 0;
+
+	pitch_mode = MODE_MANUAL;
+	mast_mode = MODE_MANUAL;
+
+	can1_recv_flag = 0;
+
 	InitDrives(&hspi1, &htim1);
 
 	return STATE_PITCH_CONTROL;
@@ -171,11 +209,26 @@ uint32_t DoStateInit()
 
 uint32_t DoStatePitchControl()
 {
+	if (pitch_cmd_nbr_steps != 0)
+	{
+		for (int i = 0; i < pitch_cmd_nbr_steps; ++i)
+		{
+			Step(DRIVE_PITCH);
+		}
+	}
 	return STATE_MAST_CONTROL;
 }
 
 uint32_t DoStateMastControl()
 {
+	if (mast_cmd_dir == 0)
+	{
+		// TODO: (Marc)  MastStop();
+	}
+	else if (mast_cmd_dir > 0)
+	{
+
+	}
 	return STATE_CAN;
 }
 
@@ -207,6 +260,116 @@ uint32_t DoStateEmergencyStop()
 void DoStateError()
 {
 	Error_Handler();
+}
+
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef* hcan)
+{
+	typedef union RxToInt_
+	{
+		struct
+		{
+			uint8_t bytes[4];
+		};
+		int32_t int_val;
+	} RxToInt;
+	static RxToInt rxToInt;
+
+	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &pRxHeader, rxData) != HAL_OK)
+	{
+		Error_Handler();
+	}
+
+	if (pRxHeader.StdId == MARIO_PITCH_MODE_CMD)
+	{
+		pitch_mode = rxData[0];
+	}
+	else if (pRxHeader.StdId == MARIO_MAST_MODE_CMD)
+	{
+		mast_mode = rxData[0];
+	}
+	else if (pRxHeader.StdId == MARIO_ROPS_CMD)
+	{
+		b_rops = 1;
+	}
+	else if (pRxHeader.StdId == MARIO_PITCH_EMERGENCY_STOP)
+	{
+		b_emergency_stop = 1;
+	}
+	else if (pRxHeader.StdId == MARIO_MAST_EMERGENCY_STOP)
+	{
+		b_emergency_stop = 1;
+	}
+	else if (pRxHeader.StdId == MARIO_DRIVE_MOTOR_RESET)
+	{
+		// TODO: (Marc) Implement soft reset
+	}
+	else if (pRxHeader.StdId == MARIO_PITCH_CMD)
+	{
+		memcpy(rxToInt.bytes, rxData, 4);
+		pitch_cmd_nbr_steps = rxToInt.int_val;
+	}
+	else if (pRxHeader.StdId == MARIO_MAST_CMD)
+	{
+		memcpy(rxToInt.bytes, rxData, 4);
+		mast_cmd_dir = rxToInt.int_val;
+	}
+	// Volant commands
+	else if (pRxHeader.StdId == VOLANT_PITCH_MODE_CMD)
+	{
+		pitch_mode = rxData[0];
+	}
+	else if (pRxHeader.StdId == VOLANT_MAST_MODE_CMD)
+	{
+		mast_mode = rxData[0];
+	}
+	else if (pRxHeader.StdId == VOLANT_MANUAL_PITCH_DIR)
+	{
+		uint32_t manual_pitch_dir;
+		memcpy(&manual_pitch_dir, rxData, 4);
+	}
+	else if (pRxHeader.StdId == VOLANT_MANUAL_MAST_DIR)
+	{
+		uint32_t manual_mast_dir;
+		memcpy(&manual_mast_dir, rxData, 4);
+	}
+	else if (pRxHeader.StdId == VOLANT_MANUAL_ROPS_CMD)
+	{
+		b_rops = 1;
+	}
+	else
+	{
+		// Unknown CAN ID
+	}
+}
+/*
+// Motor modes
+#define VOLANT_PITCH_MODE_CMD 0x31
+#define VOLANT_MAST_MODE_CMD 0x32
+
+// Motor Manual Control commands
+#define VOLANT_MANUAL_PITCH_DIR 0x33
+#define VOLANT_MANUAL_MAST_DIR 0x34
+#define VOLANT_MANUAL_ROPS_CMD 0x35
+*/
+
+HAL_StatusTypeDef TransmitCAN(uint8_t id, uint8_t* buf, uint8_t size)
+{
+	// CAN_TxHeaderTypeDef msg;
+	pTxHeader.StdId = id;
+	pTxHeader.IDE = CAN_ID_STD;
+	pTxHeader.RTR = CAN_RTR_DATA;
+	pTxHeader.DLC = size; // Number of bytes to send
+	pTxHeader.TransmitGlobalTime = DISABLE;
+
+	uint32_t mb;
+	HAL_StatusTypeDef ret = HAL_CAN_AddTxMessage(&hcan1, &pTxHeader, buf, &mb);
+	if (ret != HAL_OK)
+		return ret;
+
+	// Update the CAN led
+	// ToggleLed(LED_CAN);
+	return ret;
 }
 
 /* USER CODE END 0 */
@@ -246,6 +409,8 @@ int main(void)
   MX_SPI1_Init();
   MX_USART2_UART_Init();
   MX_TIM1_Init();
+  MX_TIM3_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
   current_state = STATE_INIT;
@@ -262,6 +427,13 @@ int main(void)
   {
 	  // HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);
 	  // HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
+
+	  if (b_timer_flag)
+	  {
+		  b_timer_flag = 0;
+
+		  HAL_GPIO_TogglePin(LED3_GPIO_Port, LED3_Pin);
+	  }
 
 	  // HAL_Delay(250);
 	  ExecuteStateMachine();
@@ -327,30 +499,83 @@ void SystemClock_Config(void)
 static void MX_CAN1_Init(void)
 {
 
-  /* USER CODE BEGIN CAN1_Init 0 */
+	/* USER CODE BEGIN CAN1_Init 0 */
 
-  /* USER CODE END CAN1_Init 0 */
+	/* USER CODE END CAN1_Init 0 */
 
-  /* USER CODE BEGIN CAN1_Init 1 */
+	/* USER CODE BEGIN CAN1_Init 1 */
 
-  /* USER CODE END CAN1_Init 1 */
-  hcan1.Instance = CAN1;
-  hcan1.Init.Prescaler = 16;
-  hcan1.Init.Mode = CAN_MODE_NORMAL;
-  hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan1.Init.TimeSeg1 = CAN_BS1_1TQ;
-  hcan1.Init.TimeSeg2 = CAN_BS2_1TQ;
-  hcan1.Init.TimeTriggeredMode = DISABLE;
-  hcan1.Init.AutoBusOff = DISABLE;
-  hcan1.Init.AutoWakeUp = DISABLE;
-  hcan1.Init.AutoRetransmission = DISABLE;
-  hcan1.Init.ReceiveFifoLocked = DISABLE;
-  hcan1.Init.TransmitFifoPriority = DISABLE;
-  if (HAL_CAN_Init(&hcan1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN CAN1_Init 2 */
+	/* USER CODE END CAN1_Init 1 */
+	hcan1.Instance = CAN1;
+	hcan1.Init.Prescaler = 16;
+	hcan1.Init.Mode = CAN_MODE_NORMAL;
+	hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
+	hcan1.Init.TimeSeg1 = CAN_BS1_1TQ;
+	hcan1.Init.TimeSeg2 = CAN_BS2_1TQ;
+	hcan1.Init.TimeTriggeredMode = DISABLE;
+	hcan1.Init.AutoBusOff = DISABLE;
+	hcan1.Init.AutoWakeUp = DISABLE;
+	hcan1.Init.AutoRetransmission = DISABLE;
+	hcan1.Init.ReceiveFifoLocked = DISABLE;
+	hcan1.Init.TransmitFifoPriority = DISABLE;
+	if (HAL_CAN_Init(&hcan1) != HAL_OK)
+	{
+		Error_Handler();
+	}
+	/* USER CODE BEGIN CAN1_Init 2 */
+
+	CAN_FilterTypeDef sf_mario;
+	// All common bits go into the ID register
+	sf_mario.FilterIdHigh = MARIO_RX_FILTER_ID_HIGH;
+	sf_mario.FilterIdLow = MARIO_RX_FILTER_ID_LOW;
+
+	// Which bits to compare for filter
+	sf_mario.FilterMaskIdHigh = MARIO_RX_FILTER_MASK_HIGH;
+	sf_mario.FilterMaskIdLow = MARIO_RX_FILTER_MASK_LOW;
+
+	sf_mario.FilterFIFOAssignment = CAN_FILTER_FIFO0;
+	sf_mario.FilterBank = 18; // Which filter to use from the assigned ones
+	sf_mario.FilterMode = CAN_FILTERMODE_IDMASK;
+	sf_mario.FilterScale = CAN_FILTERSCALE_32BIT;
+	sf_mario.FilterActivation = CAN_FILTER_ENABLE;
+	sf_mario.SlaveStartFilterBank = 20; // How many filters to assign to CAN1
+	if (HAL_CAN_ConfigFilter(&hcan1, &sf_mario) != HAL_OK)
+	{
+	  Error_Handler();
+	}
+
+	CAN_FilterTypeDef sf_volant;
+	// All common bits go into the ID register
+	sf_volant.FilterIdHigh = VOLANT_RX_FILTER_ID_HIGH;
+	sf_volant.FilterIdLow = VOLANT_RX_FILTER_ID_LOW;
+
+	// Which bits to compare for filter
+	sf_volant.FilterMaskIdHigh = VOLANT_RX_FILTER_MASK_HIGH;
+	sf_volant.FilterMaskIdLow = VOLANT_RX_FILTER_MASK_LOW;
+
+	sf_volant.FilterFIFOAssignment = CAN_FILTER_FIFO0;
+	sf_volant.FilterBank = 19; // Which filter to use from the assigned ones
+	sf_volant.FilterMode = CAN_FILTERMODE_IDMASK;
+	sf_volant.FilterScale = CAN_FILTERSCALE_32BIT;
+	sf_volant.FilterActivation = CAN_FILTER_ENABLE;
+	sf_volant.SlaveStartFilterBank = 20; // How many filters to assign to CAN1
+	if (HAL_CAN_ConfigFilter(&hcan1, &sf_mario) != HAL_OK)
+	{
+	  Error_Handler();
+	}
+
+	//if (HAL_CAN_RegisterCallback(&hcan1, HAL_CAN_RX_FIFO0_MSG_PENDING_CB_ID, can_irq))
+	//{
+	//	  Error_Handler();
+	//}
+	if (HAL_CAN_Start(&hcan1) != HAL_OK)
+	{
+		Error_Handler();
+	}
+	if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK)
+	{
+		Error_Handler();
+	}
 
   /* USER CODE END CAN1_Init 2 */
 
@@ -577,6 +802,114 @@ static void MX_TIM1_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 0;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 4294967295;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+  HAL_TIM_MspPostInit(&htim2);
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 480;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 50000;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -689,6 +1022,19 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+// EXTI Line External Interrupt ISR Handler CallBack
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if(GPIO_Pin == GPIO_PIN_8) // PushButton 2
+    {
+    	HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+    }
+    else if (GPIO_Pin == GPIO_PIN_9) // PushButton 1
+    {
+    	HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
+    }
+}
 
 /* USER CODE END 4 */
 
