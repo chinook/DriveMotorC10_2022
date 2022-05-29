@@ -100,10 +100,11 @@ void TransmitMotorSPI(DRIVE_MOTOR drive_index, uint8_t reg)
 
 	uint16_t data = *((uint16_t*)(&drive_regs[drive_index]) + reg);
 
-	uint8_t tx_data[2];
-	tx_data[1] = ((reg & 0x07) << 4) | ((data & 0xF00) >> 8);
+	uint8_t tx_data[2] = {0};
+	tx_data[1] = ((reg & 0x07) << 4) | ((data & 0x0F00) >> 8);
 	tx_data[0] = (data & 0xFF);
-	HAL_SPI_Transmit(hspi, tx_data, 2, 100);
+	HAL_SPI_Transmit(hspi, tx_data, 2, HAL_MAX_DELAY);
+	for (int i = 0; i < 3000; ++i) {}
 
 	//HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
 	//				  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
@@ -112,7 +113,7 @@ void TransmitMotorSPI(DRIVE_MOTOR drive_index, uint8_t reg)
 uint16_t ReceiveMotorSPI(DRIVE_MOTOR drive_index, uint8_t reg)
 {
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
 
 	uint8_t tx_data = reg | 0x80;
 	HAL_SPI_Transmit(hspi, &tx_data, 1, HAL_MAX_DELAY);
@@ -123,7 +124,7 @@ uint16_t ReceiveMotorSPI(DRIVE_MOTOR drive_index, uint8_t reg)
 	// TODO: (Marc) Comment recevoir 12bits SPI
 
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
 
 	return 0;
 }
@@ -132,7 +133,7 @@ void SendDriveRegisters(DRIVE_MOTOR drive_index)
 {
 	// Send every register to the drive
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
 
 	// We send every register except for the status register (up to 7 register)
 	for (uint8_t i = 0; i < (NUM_DRIVE_REGS - 1); ++i)
@@ -142,7 +143,7 @@ void SendDriveRegisters(DRIVE_MOTOR drive_index)
 	}
 
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
 }
 
 
@@ -211,25 +212,25 @@ void InitDriveMotor(DRIVE_MOTOR drive_index)
 void EnableDrive(DRIVE_MOTOR drive_index)
 {
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-						  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+						  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
 
 	drive_regs[drive_index].ctrl_reg.enbl = 1;
 	TransmitMotorSPI(drive_index, DRV8711_CTRL_REG);
 
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-						  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+						  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
 }
 
 void DisableDrive(DRIVE_MOTOR drive_index)
 {
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-						  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+						  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
 
 	drive_regs[drive_index].ctrl_reg.enbl = 0;
 	TransmitMotorSPI(drive_index, DRV8711_CTRL_REG);
 
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-						  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+						  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
 }
 
 void ResetDrive(DRIVE_MOTOR drive_index)
@@ -272,10 +273,10 @@ void EnableDriveIndexer(DRIVE_MOTOR drive_index)
 	drive_regs[drive_index].off_reg.pwmmode = 0;		// Use internal indexer
 
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
 	TransmitMotorSPI(drive_index, DRV8711_OFF_REG);
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
 }
 
 void EnableDriveExternalPWM(DRIVE_MOTOR drive_index)
@@ -283,20 +284,22 @@ void EnableDriveExternalPWM(DRIVE_MOTOR drive_index)
 	drive_regs[drive_index].off_reg.pwmmode = 1;		// Use external PWM
 
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
 	TransmitMotorSPI(drive_index, DRV8711_OFF_REG);
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
 }
 
 void Step(DRIVE_MOTOR drive_index)
 {
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
 					  drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_SET);
-	HAL_Delay(1);
+	//HAL_Delay(5);
+	for (int i = 0; i < 5000; ++i) {}
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
 					  drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_RESET);
-	HAL_Delay(1);
+	//HAL_Delay(5);
+	for (int i = 0; i < 5000; ++i) {}
 }
 
 

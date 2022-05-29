@@ -419,7 +419,9 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  HAL_GPIO_WritePin(LED_CANA_GPIO_Port, LED_CANA_Pin, 1);
+  DoStateInit();
+
+  HAL_GPIO_WritePin(LED_CANA_GPIO_Port, LED_CANA_Pin, 0);
   HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, 0);
   //HAL_GPIO_WritePin(LED_CANA_GPIO_Port, LED_CANA_Pin, 1);
   //HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, 1);
@@ -427,16 +429,22 @@ int main(void)
   {
 	  // HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);
 	  // HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
-
+	  /*
 	  if (b_timer_flag)
 	  {
 		  b_timer_flag = 0;
 
 		  HAL_GPIO_TogglePin(LED3_GPIO_Port, LED3_Pin);
 	  }
+	  */
+
+	  // ExecuteStateMachine();
+
+	  Step(DRIVE_MAST);
+	  Step(DRIVE_PITCH);
 
 	  // HAL_Delay(250);
-	  ExecuteStateMachine();
+	  // ExecuteStateMachine();
 	  // TODO: (Marc) Better with timer resolution
 	  HAL_Delay(5);
     /* USER CODE END WHILE */
@@ -1026,13 +1034,13 @@ static void MX_GPIO_Init(void)
 // EXTI Line External Interrupt ISR Handler CallBack
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    if(GPIO_Pin == GPIO_PIN_8) // PushButton 2
+    if(GPIO_Pin == GPIO_PIN_9) // PushButton 2
     {
-    	HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+    	HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);
     }
-    else if (GPIO_Pin == GPIO_PIN_9) // PushButton 1
+    else if (GPIO_Pin == GPIO_PIN_8) // PushButton 1
     {
-    	HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
+    	HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
     }
 }
 
