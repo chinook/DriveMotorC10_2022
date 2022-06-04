@@ -84,7 +84,21 @@ void InitDrives(SPI_HandleTypeDef* hspi_, TIM_HandleTypeDef* htim_)
 	htim = htim_;
 
 	InitDriveMotor(DRIVE_PITCH);
-	InitDriveMotor(DRIVE_MAST);
+	// InitDriveMotor(DRIVE_MAST);
+
+	// Reset drive
+	HAL_GPIO_WritePin(drive_ports[DRIVE_MAST][DRIVE_RESET],
+			drive_pins[DRIVE_MAST][DRIVE_RESET], GPIO_PIN_SET);
+	HAL_Delay(10);
+	HAL_GPIO_WritePin(drive_ports[DRIVE_MAST][DRIVE_RESET],
+			drive_pins[DRIVE_MAST][DRIVE_RESET], GPIO_PIN_RESET);
+
+	// Disable sleeping
+	HAL_GPIO_WritePin(drive_ports[DRIVE_MAST][DRIVE_SLEEP],
+			drive_pins[DRIVE_MAST][DRIVE_SLEEP], GPIO_PIN_SET);
+
+	// Set initial reg values
+	InitRegValues(DRIVE_MAST);
 
 
 }
@@ -98,16 +112,39 @@ void TransmitMotorSPI(DRIVE_MOTOR drive_index, uint8_t reg)
 	//HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
 	//		  		    drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
 
-	uint16_t data = *((uint16_t*)(&drive_regs[drive_index]) + reg);
+	for (int i = 0; i < 1000; ++i) {}
+	// uint16_t data = *(uint16_t*)(&drive_regs[drive_index]) + reg;
+	uint16_t data = *((uint16_t*)(&drive_regs[drive_index])) | (reg << 12);
 
 	uint8_t tx_data[2] = {0};
-	tx_data[1] = ((reg & 0x07) << 4) | ((data & 0x0F00) >> 8);
-	tx_data[0] = (data & 0xFF);
-	HAL_SPI_Transmit(hspi, tx_data, 2, HAL_MAX_DELAY);
-	for (int i = 0; i < 3000; ++i) {}
+	tx_data[0] = ((reg & 0x07) << 4) | ((data & 0x0F00) >> 8);
+	tx_data[1] = (data & 0xFF);
+	uint8_t ret = HAL_SPI_Transmit(hspi, tx_data, 2, HAL_MAX_DELAY);
+	if (ret != HAL_OK)
+	{
+		HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
+	}
+	for (int i = 0; i < 1000; ++i) {}
 
 	//HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
 	//				  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+}
+
+void DEBUG_SPI(DRIVE_MOTOR drive_index)
+{
+	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+
+	TransmitMotorSPI(drive_index, 0);
+	/*
+	uint8_t tx_data = 0x00 | 0x80;
+	HAL_SPI_Transmit(hspi, &tx_data, 1, HAL_MAX_DELAY);
+	uint8_t rx_data;
+	HAL_SPI_Receive(hspi, &rx_data, 1, HAL_MAX_DELAY);
+	*/
+
+	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
 }
 
 uint16_t ReceiveMotorSPI(DRIVE_MOTOR drive_index, uint8_t reg)
@@ -153,7 +190,8 @@ void InitRegValues(DRIVE_MOTOR drive_index)
 	drive_regs[drive_index].ctrl_reg.enbl = 1;	// Enable motor
 	drive_regs[drive_index].ctrl_reg.rdir = 0;	// Direction set by DIR pin
 	drive_regs[drive_index].ctrl_reg.rstep = 0;	// No automatic stepping
-	drive_regs[drive_index].ctrl_reg.mode = 0b0010;	// 1/4 step
+	//drive_regs[drive_index].ctrl_reg.mode = 0b0010;	// 1/4 step
+	drive_regs[drive_index].ctrl_reg.mode = 0b0000;	// Full step
 	drive_regs[drive_index].ctrl_reg.extstall = 0;	// Internal stall detect
 	drive_regs[drive_index].ctrl_reg.isgain = 0b00;	// Gain of 5
 	drive_regs[drive_index].ctrl_reg.dtime = 0b11;	// Dead-time of 850ns
@@ -295,11 +333,11 @@ void Step(DRIVE_MOTOR drive_index)
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
 					  drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_SET);
 	//HAL_Delay(5);
-	for (int i = 0; i < 5000; ++i) {}
+	for (int i = 0; i < 45; ++i) {}
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
 					  drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_RESET);
 	//HAL_Delay(5);
-	for (int i = 0; i < 5000; ++i) {}
+	for (int i = 0; i < 45; ++i) {}
 }
 
 

@@ -225,7 +225,6 @@ void EXTI9_5_IRQHandler(void)
 
   /* USER CODE END EXTI9_5_IRQn 0 */
   HAL_GPIO_EXTI_IRQHandler(PB2_Pin);
-  HAL_GPIO_EXTI_IRQHandler(PB1_Pin);
   /* USER CODE BEGIN EXTI9_5_IRQn 1 */
 
   // HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);

@@ -150,6 +150,8 @@ void EnableDriveExternalPWM(DRIVE_MOTOR drive_index);
 
 void Step(DRIVE_MOTOR drive_index);
 
+void DEBUG_SPI(DRIVE_MOTOR drive_index);
+
 
 
 #endif /* INC_MOTOR_H_ */
