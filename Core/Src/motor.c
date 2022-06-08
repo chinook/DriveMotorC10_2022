@@ -71,6 +71,7 @@ uint16_t ReceiveMotorSPI(DRIVE_MOTOR drive_index, uint8_t reg);
 void SendDriveRegisters(DRIVE_MOTOR drive_index);
 
 void InitRegValues(DRIVE_MOTOR drive_index);
+void InitRegValues2(DRIVE_MOTOR drive_index);
 void InitDriveMotor(DRIVE_MOTOR drive_index);
 
 // PWM
@@ -83,9 +84,15 @@ void InitDrives(SPI_HandleTypeDef* hspi_, TIM_HandleTypeDef* htim_)
 	hspi = hspi_;
 	htim = htim_;
 
-	InitDriveMotor(DRIVE_PITCH);
-	// InitDriveMotor(DRIVE_MAST);
+	HAL_GPIO_WritePin(drive_ports[DRIVE_PITCH][DRIVE_CS],
+							  drive_pins[DRIVE_PITCH][DRIVE_CS], GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(drive_ports[DRIVE_MAST][DRIVE_CS],
+							  drive_pins[DRIVE_MAST][DRIVE_CS], GPIO_PIN_RESET);
 
+	InitDriveMotor(DRIVE_MAST);
+	//InitDriveMotor(DRIVE_PITCH);
+	//InitDriveMotor(DRIVE_MAST);
+	/*
 	// Reset drive
 	HAL_GPIO_WritePin(drive_ports[DRIVE_MAST][DRIVE_RESET],
 			drive_pins[DRIVE_MAST][DRIVE_RESET], GPIO_PIN_SET);
@@ -99,6 +106,7 @@ void InitDrives(SPI_HandleTypeDef* hspi_, TIM_HandleTypeDef* htim_)
 
 	// Set initial reg values
 	InitRegValues(DRIVE_MAST);
+	*/
 
 
 }
@@ -135,13 +143,13 @@ void DEBUG_SPI(DRIVE_MOTOR drive_index)
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
 					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
 
-	TransmitMotorSPI(drive_index, 0);
-	/*
-	uint8_t tx_data = 0x00 | 0x80;
+	//TransmitMotorSPI(drive_index, 0);
+
+	uint8_t tx_data = 0x70 | 0x80;
 	HAL_SPI_Transmit(hspi, &tx_data, 1, HAL_MAX_DELAY);
 	uint8_t rx_data;
 	HAL_SPI_Receive(hspi, &rx_data, 1, HAL_MAX_DELAY);
-	*/
+
 
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
 					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
@@ -190,14 +198,15 @@ void InitRegValues(DRIVE_MOTOR drive_index)
 	drive_regs[drive_index].ctrl_reg.enbl = 1;	// Enable motor
 	drive_regs[drive_index].ctrl_reg.rdir = 0;	// Direction set by DIR pin
 	drive_regs[drive_index].ctrl_reg.rstep = 0;	// No automatic stepping
-	//drive_regs[drive_index].ctrl_reg.mode = 0b0010;	// 1/4 step
-	drive_regs[drive_index].ctrl_reg.mode = 0b0000;	// Full step
+	drive_regs[drive_index].ctrl_reg.mode = 0b0010;	// 1/4 step
+	//drive_regs[drive_index].ctrl_reg.mode = 0b0001;	// 1/2 step
+	//drive_regs[drive_index].ctrl_reg.mode = 0b0000;	// Full step
 	drive_regs[drive_index].ctrl_reg.extstall = 0;	// Internal stall detect
 	drive_regs[drive_index].ctrl_reg.isgain = 0b00;	// Gain of 5
 	drive_regs[drive_index].ctrl_reg.dtime = 0b11;	// Dead-time of 850ns
 
 	// TORQUE register
-	drive_regs[drive_index].torque_reg.torque = 0xFF;	// Sets full torque for H-bridge
+	drive_regs[drive_index].torque_reg.torque = 100;	// Sets full torque for H-bridge
 	drive_regs[drive_index].torque_reg.smplth = 0b001;	// 100us BEMF sample threshold
 
 	// OFF register
@@ -226,6 +235,50 @@ void InitRegValues(DRIVE_MOTOR drive_index)
 	drive_regs[drive_index].drive_reg.idrivep = 0b10;	// High-side gate drive peak current of 150mA peak (sink)
 }
 
+void InitRegValues2(DRIVE_MOTOR drive_index)
+{
+	// CTRL register
+	drive_regs[drive_index].ctrl_reg.enbl = 1;	// Enable motor
+	drive_regs[drive_index].ctrl_reg.rdir = 0;	// Direction set by DIR pin
+	drive_regs[drive_index].ctrl_reg.rstep = 0;	// No automatic stepping
+	//drive_regs[drive_index].ctrl_reg.mode = 0b0010;	// 1/4 step
+	drive_regs[drive_index].ctrl_reg.mode = 0b0001;	// 1/2 step
+	//drive_regs[drive_index].ctrl_reg.mode = 0b0000;	// Full step
+	drive_regs[drive_index].ctrl_reg.extstall = 0;	// Internal stall detect
+	// drive_regs[drive_index].ctrl_reg.isgain = 0b00;	// Gain of 5
+	drive_regs[drive_index].ctrl_reg.isgain = 0b01;	// Gain of 10
+	drive_regs[drive_index].ctrl_reg.dtime = 0b00;	// Dead-time of 850ns
+
+	// TORQUE register
+	drive_regs[drive_index].torque_reg.torque = 24;// max 2.5A  //0xFF;	// Sets full torque for H-bridge
+	drive_regs[drive_index].torque_reg.smplth = 0b111;	// 100us BEMF sample threshold
+
+	// OFF register
+	drive_regs[drive_index].off_reg.toff = 0x80;		// Sets fixed off time, in increments of 500ns
+	drive_regs[drive_index].off_reg.pwmmode = 0;		// Use internal indexer
+
+	// BLANK register
+	drive_regs[drive_index].blank_reg.tblank = 0x80;	// Current trip blanking time, in increments of 20ns
+	drive_regs[drive_index].blank_reg.abt = 0;		// Disable adaptive blanking time
+
+	// DECAY register
+	drive_regs[drive_index].decay_reg.tdecay = 0x80;		// Mixed decay transition time, in increments of 500ns
+	drive_regs[drive_index].decay_reg.decmod = 0b010;	// Slow decay for increasing current
+
+	// STALL register
+	drive_regs[drive_index].stall_reg.sdthr = 0xFF;	// Stall detect threshold
+	drive_regs[drive_index].stall_reg.sdcnt = 0b11;	// STALLn asserted on first step with BEMF below SDTHR
+	drive_regs[drive_index].stall_reg.vdiv = 0b00;	// BEMF divided by 32
+
+	// DRIVE register
+	drive_regs[drive_index].drive_reg.ocpth = 0b11;		// OCP threshold of 500mV
+	drive_regs[drive_index].drive_reg.ocpdeg = 0b11;		// OCP deglitch time of 4us
+	drive_regs[drive_index].drive_reg.tdriven = 0b11;	// Low-side gate drive time of 500ns
+	drive_regs[drive_index].drive_reg.tdrivep = 0b11;	// High-side gate drive time of 500ns
+	drive_regs[drive_index].drive_reg.idriven = 0b11;	// Low-side gate drive peak current of 300mA peak (sink)
+	drive_regs[drive_index].drive_reg.idrivep = 0b11;	// High-side gate drive peak current of 150mA peak (sink)
+}
+
 void InitDriveMotor(DRIVE_MOTOR drive_index)
 {
 	// Reset drive
@@ -240,7 +293,7 @@ void InitDriveMotor(DRIVE_MOTOR drive_index)
 			drive_pins[drive_index][DRIVE_SLEEP], GPIO_PIN_SET);
 
 	// Set initial reg values
-	InitRegValues(drive_index);
+	InitRegValues2(drive_index);
 
 	// Send regs over SPI
 	SendDriveRegisters(drive_index);

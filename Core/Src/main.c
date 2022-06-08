@@ -424,6 +424,7 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  HAL_Delay(100);
   DoStateInit();
 
   HAL_GPIO_WritePin(LED_CANA_GPIO_Port, LED_CANA_Pin, 0);
@@ -431,8 +432,12 @@ int main(void)
   //HAL_GPIO_WritePin(LED_CANA_GPIO_Port, LED_CANA_Pin, 1);
   //HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, 1);
 
-  SetDirection(DRIVE_PITCH, DIR_FORWARD);
-  SetDirection(DRIVE_MAST, DIR_FORWARD);
+  //SetDirection(DRIVE_PITCH, DIR_FORWARD);
+  //SetDirection(DRIVE_MAST, DIR_FORWARD);
+  HAL_Delay(10);
+
+  uint8_t mot_direction = 0;
+  SetDirection(DRIVE_MAST, mot_direction);
 
   while (1)
   {
@@ -449,18 +454,63 @@ int main(void)
 
 	  // ExecuteStateMachine();
 	  //InitDrives(&hspi1, &htim1);
-	  //DEBUG_SPI(DRIVE_PITCH);
-	  for (int i = 0; i < 5000; ++i) {}
-	  //HAL_Delay(1);
+	  //DEBUG_SPI(DRIVE_PITCH)
+	  //HAL_Delay(10);
 
+	  //for (int i = 0; i < 1000; ++i) {}
 	  //Step(DRIVE_MAST);
-	  Step(DRIVE_PITCH);
+	  //Step(DRIVE_PITCH);
+
+	  for (int i = 0; i < 1000; ++i) {}
+	  // DEBUG_SPI(DRIVE_MAST);
+
+	  uint8_t update_dir = 0;
+	  uint8_t step = 0;
+
+	  /*
+	  if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin))
+	  {
+		  if (mot_direction != 0)
+			  update_dir = 1;
+		  mot_direction = 0;
+
+		  step = 1;
+	  }*/
+
+	  if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB2_GPIO_Port, PB2_Pin))
+	  {
+		  if (mot_direction != 1)
+			  update_dir = 1;
+		  mot_direction = 1;
+
+		  step = 1;
+	  }
+
+	  if (update_dir)
+	  {
+		  SetDirection(DRIVE_MAST, mot_direction);
+		  for (int i = 0; i < 2000; ++i) {}
+	  }
+
+	  if (step)
+	  {
+		  Step(DRIVE_MAST);
+		  for (int i = 0; i < 750; ++i) {}
+	  }
+
+	  //Step(DRIVE_PITCH);
 
 	  uint8_t stall1 = HAL_GPIO_ReadPin(nSTALL1_GPIO_Port, nSTALL1_Pin);
 	  uint8_t fault1 = HAL_GPIO_ReadPin(nFAULT1_GPIO_Port, nFAULT1_Pin);
-	  if (fault1 == 0)
+
+	  uint8_t fault2 = HAL_GPIO_ReadPin(nFAULT2_GPIO_Port, nFAULT2_Pin);
+	  if (fault2 == 0)
 	  {
 		  HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
+	  }
+	  else
+	  {
+		  HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_RESET);
 	  }
 
 	  // HAL_Delay(250);
@@ -737,7 +787,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_128;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -766,6 +816,8 @@ static void MX_TIM1_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
 
   /* USER CODE BEGIN TIM1_Init 1 */
 
@@ -786,9 +838,39 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
+  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
+  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
+  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
+  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
+  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
+  sBreakDeadTimeConfig.DeadTime = 0;
+  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
+  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
+  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
+  if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
   {
     Error_Handler();
   }
@@ -797,6 +879,7 @@ static void MX_TIM1_Init(void)
   // HAL_TIM_PWM_Start(&htim1, channel);
 
   /* USER CODE END TIM1_Init 2 */
+  HAL_TIM_MspPostInit(&htim1);
 
 }
 
@@ -814,7 +897,6 @@ static void MX_TIM2_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
 
   /* USER CODE BEGIN TIM2_Init 1 */
 
@@ -834,32 +916,15 @@ static void MX_TIM2_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
-  {
-    Error_Handler();
-  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
   /* USER CODE BEGIN TIM2_Init 2 */
 
   /* USER CODE END TIM2_Init 2 */
-  HAL_TIM_MspPostInit(&htim2);
 
 }
 
@@ -1003,9 +1068,8 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOE, FT_RESET_Pin|SPI_CS2_Pin|SPI_CS1_Pin|BIN2_1_Pin
-                          |DIR1_Pin|STEP1_Pin|RESET1_Pin|nSLEEP1_Pin
-                          |STEP2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOE, FT_RESET_Pin|SPI_CS2_Pin|SPI_CS1_Pin|DIR1_Pin
+                          |STEP1_Pin|RESET1_Pin|nSLEEP1_Pin|STEP2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, BIN2_2_Pin|BIN1_2_Pin|DIR2_Pin|nSLEEP2_Pin
@@ -1021,12 +1085,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : FT_RESET_Pin SPI_CS2_Pin SPI_CS1_Pin BIN2_1_Pin
-                           DIR1_Pin STEP1_Pin RESET1_Pin nSLEEP1_Pin
-                           STEP2_Pin */
-  GPIO_InitStruct.Pin = FT_RESET_Pin|SPI_CS2_Pin|SPI_CS1_Pin|BIN2_1_Pin
-                          |DIR1_Pin|STEP1_Pin|RESET1_Pin|nSLEEP1_Pin
-                          |STEP2_Pin;
+  /*Configure GPIO pins : FT_RESET_Pin SPI_CS2_Pin SPI_CS1_Pin DIR1_Pin
+                           STEP1_Pin RESET1_Pin nSLEEP1_Pin STEP2_Pin */
+  GPIO_InitStruct.Pin = FT_RESET_Pin|SPI_CS2_Pin|SPI_CS1_Pin|DIR1_Pin
+                          |STEP1_Pin|RESET1_Pin|nSLEEP1_Pin|STEP2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -1075,12 +1137,16 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     if(GPIO_Pin == GPIO_PIN_9) // PushButton 2
     {
-    	HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);
+    	//HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);
     }
+
+    // DISABLED DISABLED DISABLED
+    /*
     else if (GPIO_Pin == GPIO_PIN_8) // PushButton 1
     {
-    	HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
+    	//HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
     }
+    */
 }
 
 /* USER CODE END 4 */
