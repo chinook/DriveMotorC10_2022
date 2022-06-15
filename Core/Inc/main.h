@@ -49,6 +49,8 @@ extern "C" {
 
 /* USER CODE END EM */
 
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
@@ -60,7 +62,8 @@ enum MOTOR_MODES
 	MODE_AUTOMATIC
 };
 
-extern uint8_t b_timer_flag;
+extern uint8_t b_timer500ms_flag;
+extern uint8_t b_timer50ms_flag;
 
 extern uint8_t pitch_mode;
 extern uint8_t mast_mode;
@@ -109,10 +112,6 @@ extern uint32_t txMailbox;
 #define PB1_Pin GPIO_PIN_9
 #define PB1_GPIO_Port GPIOE
 #define PB1_EXTI_IRQn EXTI9_5_IRQn
-#define BIN2_1_Pin GPIO_PIN_10
-#define BIN2_1_GPIO_Port GPIOE
-#define BIN1_1_Pin GPIO_PIN_11
-#define BIN1_1_GPIO_Port GPIOE
 #define DIR1_Pin GPIO_PIN_12
 #define DIR1_GPIO_Port GPIOE
 #define STEP1_Pin GPIO_PIN_13
