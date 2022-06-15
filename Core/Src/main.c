@@ -102,6 +102,10 @@ uint8_t mast_mode = MODE_MANUAL;
 
 uint32_t current_state = STATE_INIT;
 
+uint8_t old_mot_direction = 2;
+uint8_t mot_direction = 0;
+uint8_t mot_step = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -131,6 +135,9 @@ uint32_t DoStateEmergencyStop();
 
 void DoStateError();
 
+
+void ProcessCanMessage();
+void CAN_ReceiveFifoCallback(CAN_HandleTypeDef* hcan, uint32_t fifo);
 
 HAL_StatusTypeDef TransmitCAN(uint8_t id, uint8_t* buf, uint8_t size);
 
@@ -243,7 +250,6 @@ uint32_t DoStateROPS()
 {
 	while (b_rops)
 	{
-
 	}
 
 	return STATE_PITCH_CONTROL;
@@ -265,8 +271,9 @@ void DoStateError()
 }
 
 
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef* hcan)
+void ProcessCanMessage()
 {
+	/*
 	typedef union RxToInt_
 	{
 		struct
@@ -276,12 +283,36 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef* hcan)
 		int32_t int_val;
 	} RxToInt;
 	static RxToInt rxToInt;
+	*/
 
-	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &pRxHeader, rxData) != HAL_OK)
+	if (pRxHeader.StdId == 0xAA)
 	{
-		Error_Handler();
+		// HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, 1);
+
+		uint32_t can_data = rxData[0] | (rxData[1] << 8) | (rxData[2] << 16) | (rxData[3] << 24);
+		if (can_data == 0x2)
+		{
+			mot_step = 0;
+			// HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, 0);
+		}
+		else if (can_data == 0x1)
+		{
+			// HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, 1);
+
+			// Left
+			mot_direction = 0;
+			mot_step = 1;
+		}
+		else if (can_data == 0x200)
+		{
+			// HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, 1);
+
+			mot_direction = 1;
+			mot_step = 1;
+		}
 	}
 
+	/*
 	if (pRxHeader.StdId == MARIO_PITCH_MODE_CMD)
 	{
 		pitch_mode = rxData[0];
@@ -343,7 +374,52 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef* hcan)
 	{
 		// Unknown CAN ID
 	}
+	*/
 }
+
+void CAN_ReceiveFifoCallback(CAN_HandleTypeDef* hcan, uint32_t fifo)
+{
+	uint32_t num_messages = HAL_CAN_GetRxFifoFillLevel(hcan, fifo);
+	for (int i = 0; i < num_messages; ++i)
+	{
+		if (HAL_CAN_GetRxMessage(hcan, fifo, &pRxHeader, rxData) != HAL_OK)
+		{
+			Error_Handler();
+		}
+
+		ProcessCanMessage();
+	}
+}
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef* hcan)
+{
+	HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
+
+	CAN_ReceiveFifoCallback(hcan, CAN_RX_FIFO0);
+	CAN_ReceiveFifoCallback(hcan, CAN_RX_FIFO1);
+}
+
+
+// CAN error callbacks
+void HAL_CAN_RxFifo0FullCallback(CAN_HandleTypeDef* hcan)
+{
+	// TODO: (Marc) Error detection/handling
+	//HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
+}
+
+void HAL_CAN_RxFifo1FullCallback(CAN_HandleTypeDef* hcan)
+{
+	// TODO: (Marc) Error detection/handling
+	//HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
+}
+
+void HAL_CAN_ErrorCallback(CAN_HandleTypeDef* hcan)
+{
+	// TODO: (Marc) Error detection/handling
+	//HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
+}
+
+
 /*
 // Motor modes
 #define VOLANT_PITCH_MODE_CMD 0x31
@@ -424,7 +500,7 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  HAL_Delay(100);
+  HAL_Delay(10);
   DoStateInit();
 
   HAL_GPIO_WritePin(LED_CANA_GPIO_Port, LED_CANA_Pin, 0);
@@ -436,7 +512,6 @@ int main(void)
   //SetDirection(DRIVE_MAST, DIR_FORWARD);
   HAL_Delay(10);
 
-  uint8_t mot_direction = 0;
   SetDirection(DRIVE_MAST, mot_direction);
 
   while (1)
@@ -451,6 +526,7 @@ int main(void)
 		  HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);
 	  }
 
+	  // HAL_CAN_GetRxFifoFillLevel();
 
 	  // ExecuteStateMachine();
 	  //InitDrives(&hspi1, &htim1);
@@ -467,15 +543,19 @@ int main(void)
 	  uint8_t update_dir = 0;
 	  uint8_t step = 0;
 
-	  /*
-	  if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin))
+
+	  //if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin))
+	  if (mot_step)
 	  {
-		  if (mot_direction != 0)
+		  if (mot_direction != old_mot_direction)
+		  {
 			  update_dir = 1;
-		  mot_direction = 0;
+			  old_mot_direction = mot_direction;
+		  }
 
 		  step = 1;
-	  }*/
+	  }
+
 
 	  if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB2_GPIO_Port, PB2_Pin))
 	  {
@@ -485,6 +565,20 @@ int main(void)
 
 		  step = 1;
 	  }
+	  else if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin))
+	  {
+		  if (mot_direction != 0)
+			  update_dir = 1;
+		  mot_direction = 0;
+
+		  step = 1;
+	  }
+	  else if (!mot_step)
+	  {
+		  update_dir = 0;
+		  step = 0;
+	  }
+
 
 	  if (update_dir)
 	  {
@@ -495,7 +589,7 @@ int main(void)
 	  if (step)
 	  {
 		  Step(DRIVE_MAST);
-		  for (int i = 0; i < 750; ++i) {}
+		  for (int i = 0; i < 1000; ++i) {}
 	  }
 
 	  //Step(DRIVE_PITCH);
@@ -506,11 +600,11 @@ int main(void)
 	  uint8_t fault2 = HAL_GPIO_ReadPin(nFAULT2_GPIO_Port, nFAULT2_Pin);
 	  if (fault2 == 0)
 	  {
-		  HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
+		  //HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
 	  }
 	  else
 	  {
-		  HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_RESET);
+		  //HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_RESET);
 	  }
 
 	  // HAL_Delay(250);
@@ -585,11 +679,11 @@ static void MX_CAN1_Init(void)
 
   /* USER CODE END CAN1_Init 1 */
   hcan1.Instance = CAN1;
-  hcan1.Init.Prescaler = 16;
+  hcan1.Init.Prescaler = 6;
   hcan1.Init.Mode = CAN_MODE_NORMAL;
   hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan1.Init.TimeSeg1 = CAN_BS1_1TQ;
-  hcan1.Init.TimeSeg2 = CAN_BS2_1TQ;
+  hcan1.Init.TimeSeg1 = CAN_BS1_11TQ;
+  hcan1.Init.TimeSeg2 = CAN_BS2_4TQ;
   hcan1.Init.TimeTriggeredMode = DISABLE;
   hcan1.Init.AutoBusOff = DISABLE;
   hcan1.Init.AutoWakeUp = DISABLE;
@@ -601,7 +695,26 @@ static void MX_CAN1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN CAN1_Init 2 */
+  CAN_FilterTypeDef filter_all;
+  	// All common bits go into the ID register
+  filter_all.FilterIdHigh = 0x0000;
+  filter_all.FilterIdLow = 0x0000;
 
+  	// Which bits to compare for filter
+  filter_all.FilterMaskIdHigh = 0x0000;
+  filter_all.FilterMaskIdLow = 0x0000;
+
+  filter_all.FilterFIFOAssignment = CAN_FILTER_FIFO0;
+  filter_all.FilterBank = 1; // Which filter to use from the assigned ones
+  filter_all.FilterMode = CAN_FILTERMODE_IDMASK;
+  filter_all.FilterScale = CAN_FILTERSCALE_32BIT;
+  filter_all.FilterActivation = CAN_FILTER_ENABLE;
+  filter_all.SlaveStartFilterBank = 20; // How many filters to assign to CAN1
+  	if (HAL_CAN_ConfigFilter(&hcan1, &filter_all) != HAL_OK)
+  	{
+  	  Error_Handler();
+  	}
+/*
 	CAN_FilterTypeDef sf_mario;
 	// All common bits go into the ID register
 	sf_mario.FilterIdHigh = MARIO_RX_FILTER_ID_HIGH;
@@ -641,6 +754,7 @@ static void MX_CAN1_Init(void)
 	{
 	  Error_Handler();
 	}
+	*/
 
 	//if (HAL_CAN_RegisterCallback(&hcan1, HAL_CAN_RX_FIFO0_MSG_PENDING_CB_ID, can_irq))
 	//{
@@ -650,7 +764,9 @@ static void MX_CAN1_Init(void)
 	{
 		Error_Handler();
 	}
-	if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK)
+	if (HAL_CAN_ActivateNotification(&hcan1,
+			(CAN_IT_RX_FIFO0_MSG_PENDING | CAN_IT_RX_FIFO1_MSG_PENDING | CAN_IT_RX_FIFO0_FULL | CAN_IT_RX_FIFO0_OVERRUN |
+			 CAN_IT_RX_FIFO1_FULL | CAN_IT_RX_FIFO1_OVERRUN)) != HAL_OK)
 	{
 		Error_Handler();
 	}
@@ -816,8 +932,6 @@ static void MX_TIM1_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
 
   /* USER CODE BEGIN TIM1_Init 1 */
 
@@ -838,39 +952,9 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
-  {
-    Error_Handler();
-  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
-  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
-  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
-  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
-  sBreakDeadTimeConfig.DeadTime = 0;
-  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
-  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
-  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
-  if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
   {
     Error_Handler();
   }
@@ -879,7 +963,6 @@ static void MX_TIM1_Init(void)
   // HAL_TIM_PWM_Start(&htim1, channel);
 
   /* USER CODE END TIM1_Init 2 */
-  HAL_TIM_MspPostInit(&htim1);
 
 }
 
@@ -1068,8 +1151,9 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOE, FT_RESET_Pin|SPI_CS2_Pin|SPI_CS1_Pin|DIR1_Pin
-                          |STEP1_Pin|RESET1_Pin|nSLEEP1_Pin|STEP2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOE, FT_RESET_Pin|SPI_CS2_Pin|SPI_CS1_Pin|BIN2_1_Pin
+                          |BIN1_1_Pin|DIR1_Pin|STEP1_Pin|RESET1_Pin
+                          |nSLEEP1_Pin|STEP2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, BIN2_2_Pin|BIN1_2_Pin|DIR2_Pin|nSLEEP2_Pin
@@ -1085,10 +1169,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : FT_RESET_Pin SPI_CS2_Pin SPI_CS1_Pin DIR1_Pin
-                           STEP1_Pin RESET1_Pin nSLEEP1_Pin STEP2_Pin */
-  GPIO_InitStruct.Pin = FT_RESET_Pin|SPI_CS2_Pin|SPI_CS1_Pin|DIR1_Pin
-                          |STEP1_Pin|RESET1_Pin|nSLEEP1_Pin|STEP2_Pin;
+  /*Configure GPIO pins : FT_RESET_Pin SPI_CS2_Pin SPI_CS1_Pin BIN2_1_Pin
+                           BIN1_1_Pin DIR1_Pin STEP1_Pin RESET1_Pin
+                           nSLEEP1_Pin STEP2_Pin */
+  GPIO_InitStruct.Pin = FT_RESET_Pin|SPI_CS2_Pin|SPI_CS1_Pin|BIN2_1_Pin
+                          |BIN1_1_Pin|DIR1_Pin|STEP1_Pin|RESET1_Pin
+                          |nSLEEP1_Pin|STEP2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -1109,11 +1195,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PB2_Pin */
-  GPIO_InitStruct.Pin = PB2_Pin;
+  /*Configure GPIO pins : PB2_Pin PB1_Pin */
+  GPIO_InitStruct.Pin = PB2_Pin|PB1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(PB2_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LED_WARNING_Pin LED_ERROR_Pin LED_CANB_Pin LED_CANA_Pin
                            LED1_Pin LED2_Pin LED4_Pin LED3_Pin */
