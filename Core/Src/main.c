@@ -22,6 +22,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include <stdlib.h>
+#include <stdio.h>
 #include <string.h> // memcpy
 
 #include "chinook_can_ids.h"
@@ -42,6 +44,7 @@
 enum STATES
 {
 	STATE_INIT = 0,
+	STATE_ASSESS_PUSH_BUTTONS,
 	STATE_PITCH_CONTROL,
 	STATE_MAST_CONTROL,
 	STATE_CAN,
@@ -87,8 +90,8 @@ uint8_t b_emergency_stop = 0;
 uint8_t b_timer500ms_flag = 0;
 uint8_t b_timer50ms_flag = 0;
 
-int32_t pitch_cmd_nbr_steps = 0;
-int32_t mast_cmd_dir = 0;
+
+uint8_t flag_can_tx_send = 0;
 
 
 uint8_t txData[8];
@@ -99,15 +102,69 @@ CAN_TxHeaderTypeDef pTxHeader;
 CAN_RxHeaderTypeDef pRxHeader;
 uint32_t txMailbox;
 
-// Motor modes
-uint8_t pitch_mode = MODE_MANUAL;
-uint8_t mast_mode = MODE_MANUAL;
 
 uint32_t current_state = STATE_INIT;
 
-uint8_t old_mot_direction = 2;
-uint8_t mot_direction = 0;
-uint8_t mot_step = 0;
+// CAN data/info to send
+typedef struct CAN_TX_Data_
+{
+	uint32_t pitch_motor_bemf;
+	uint32_t mast_motor_bemf;
+
+	uint32_t pitch_motor_fault_stall;
+	uint32_t mast_motor_fault_stall;
+
+	uint32_t pitch_motor_mode_feedback;
+	uint32_t mast_motor_mode_feedback;
+
+	uint32_t pitch_done;
+
+} CAN_TX_Data;
+CAN_TX_Data can_tx_data;
+
+
+//
+// Motor control
+//
+
+typedef enum
+{
+	DIR_STOP = 0,
+	DIR_LEFT,
+	DIR_RIGHT,
+
+	DIR_INVALID
+} MOTOR_DIRECTION;
+
+typedef struct MotorStatus_
+{
+	uint8_t enabled;
+	uint8_t request_enable;
+	uint8_t request_disable;
+
+	uint8_t mode;
+
+	// Direction of motor depending on mode
+	uint8_t manual_direction;
+	uint8_t prev_manual_direction;
+	uint8_t auto_direction;
+	uint8_t prev_auto_direction;
+
+	// Direction or number of steps depending on motor
+	uint32_t auto_command;
+	uint32_t manual_command;
+} MotorStatus;
+
+typedef union
+{
+	struct
+	{
+		MotorStatus pitch_motor;
+		MotorStatus mast_motor;
+	};
+	MotorStatus motors[2];
+} Motors;
+Motors motors;
 
 /* USER CODE END PV */
 
@@ -131,6 +188,11 @@ static void MX_TIM6_Init(void);
 void ExecuteStateMachine();
 
 uint32_t DoStateInit();
+uint32_t DoStateAssessPushButtons();
+
+uint8_t CheckEnableDisableMotor(DRIVE_MOTOR motor);
+uint8_t CheckChangeDirectionMotor(DRIVE_MOTOR motor);
+
 uint32_t DoStatePitchControl();
 uint32_t DoStateMastControl();
 uint32_t DoStateCAN();
@@ -141,6 +203,9 @@ uint32_t DoStateEmergencyStop();
 void DoStateError();
 
 // void SetPWM(uint32_t pwm, uint16_t value);
+
+void SetMotorMode(DRIVE_MOTOR motor, uint32_t can_value);
+void SetMotorManualCommand(DRIVE_MOTOR motor, int32_t can_value);
 
 void ProcessCanMessage();
 void CAN_ReceiveFifoCallback(CAN_HandleTypeDef* hcan, uint32_t fifo);
@@ -179,6 +244,8 @@ void ExecuteStateMachine()
 	if (b_timer50ms_flag)
 	{
 		b_timer50ms_flag = 0;
+
+		flag_can_tx_send = 1;
 	}
 
 	// Check for ROPS or emergency stop flags
@@ -195,6 +262,10 @@ void ExecuteStateMachine()
 	{
 	case STATE_INIT:
 		current_state = DoStateInit();
+		break;
+
+	case STATE_ASSESS_PUSH_BUTTONS:
+		current_state = DoStateAssessPushButtons();
 		break;
 
 	case STATE_PITCH_CONTROL:
@@ -237,46 +308,332 @@ uint32_t DoStateInit()
 	b_timer500ms_flag = 0;
 	b_timer50ms_flag = 0;
 
-	pitch_cmd_nbr_steps = 0;
-	mast_cmd_dir = 0;
-
-	pitch_mode = MODE_MANUAL;
-	mast_mode = MODE_MANUAL;
-
 	can1_recv_flag = 0;
+	flag_can_tx_send = 0;
+
+	memset(&can_tx_data, 0, sizeof(CAN_TX_Data));
 
 	InitDrives(&hspi1, &htim1, TIM_CHANNEL_2, &htim3, TIM_CHANNEL_3);
+
+	// Initialize the motor control values
+	motors.pitch_motor.enabled = 0;
+	motors.pitch_motor.request_enable = 0;
+	motors.pitch_motor.request_disable = 0;
+	motors.pitch_motor.mode = MODE_MANUAL;
+	motors.pitch_motor.auto_command = 0;
+	motors.pitch_motor.manual_command = 0;
+	motors.pitch_motor.manual_direction = DIR_LEFT;
+	motors.pitch_motor.prev_manual_direction = DIR_INVALID;
+	motors.pitch_motor.auto_direction = DIR_LEFT;
+	motors.pitch_motor.prev_auto_direction = DIR_INVALID;
+
+	motors.mast_motor.enabled = 0;
+	motors.mast_motor.request_enable = 0;
+	motors.mast_motor.request_disable = 0;
+	motors.mast_motor.mode = MODE_MANUAL;
+	motors.mast_motor.auto_command = 0;
+	motors.mast_motor.manual_command = 0;
+	motors.mast_motor.manual_direction = DIR_LEFT;
+	motors.mast_motor.prev_manual_direction = DIR_INVALID;
+	motors.mast_motor.auto_direction = DIR_LEFT;
+	motors.mast_motor.prev_auto_direction = DIR_INVALID;
+
+
+	HAL_GPIO_WritePin(LED_CANA_GPIO_Port, LED_CANA_Pin, 0);
+	HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, 0);
+
+	HAL_Delay(10);
+	EnableDriveExternalPWM(DRIVE_MAST);
+	HAL_Delay(10);
+
+	//SetDirection(DRIVE_PITCH, DIR_FORWARD);
+	//SetDirection(DRIVE_MAST, DIR_FORWARD);
+
+	// HAL_GPIO_WritePin(TEST_BIN1_GPIO_Port, TEST_BIN1_Pin, GPIO_PIN_SET);
+	// HAL_GPIO_WritePin(TEST_BIN2_GPIO_Port, TEST_BIN2_Pin, GPIO_PIN_SET);
+
+	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
+	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);
+
+	motors.pitch_motor.enabled = 0;
+
+	SetDirection(DRIVE_PITCH, motors.pitch_motor.manual_direction);
+	delay_us(10);
+	DisableDrive(DRIVE_PITCH);
+	delay_us(10);
+	DisableDrive(DRIVE_MAST);
+
+	return STATE_ASSESS_PUSH_BUTTONS;
+}
+
+uint32_t DoStateAssessPushButtons()
+{
+	static uint32_t motor = DRIVE_PITCH;
+
+	static uint8_t is_driving = 0;
+
+	if (motors.motors[motor].mode == MODE_MANUAL)
+	{
+		// Only update manual values if mode is manual
+		if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB2_GPIO_Port, PB2_Pin))
+		{
+			motors.motors[motor].request_enable = 1;
+			motors.motors[motor].manual_direction = DIR_LEFT;
+			motors.motors[motor].manual_command = 1;
+
+			is_driving = 1;
+		}
+		else if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin))
+		{
+			motors.motors[motor].request_enable = 1;
+			motors.motors[motor].manual_direction = DIR_LEFT;
+			motors.motors[motor].manual_command = 1;
+
+			is_driving = 1;
+		}
+		else if (is_driving)
+		{
+			// If push buttons enabled motor, need to also disable/stop motor when released
+			motors.motors[motor].request_disable = 1;
+			motors.motors[motor].manual_command = 0;
+
+			is_driving = 0;
+		}
+	}
 
 	return STATE_PITCH_CONTROL;
 }
 
-uint32_t DoStatePitchControl()
+uint8_t CheckEnableDisableMotor(DRIVE_MOTOR motor)
 {
-	if (pitch_cmd_nbr_steps != 0)
+	if (motor != DRIVE_PITCH && motor != DRIVE_MAST)
+		return 0;
+
+	// Check if requested disable of drive
+	if (motors.motors[motor].request_disable)
 	{
-		for (int i = 0; i < pitch_cmd_nbr_steps; ++i)
+		DisableDrive(motor);
+		delay_us(20);
+
+		// On disable, we reset the commands
+		motors.motors[motor].manual_command = 0;
+		motors.motors[motor].auto_command = 0;
+		motors.motors[motor].prev_manual_direction = DIR_INVALID;
+		motors.motors[motor].prev_auto_direction = DIR_INVALID;
+
+		motors.motors[motor].request_disable = 0;
+		// Make sure we do not reactive drive right after
+		motors.motors[motor].request_enable = 0;
+
+		motors.motors[motor].enabled = 0;
+
+		return 1; // Indicates enable/disable status changed
+	}
+	// Check if requested enable of drive
+	else if (motors.motors[motor].request_enable)
+	{
+		EnableDrive(motor);
+		delay_us(20);
+
+		motors.motors[motor].request_enable = 0;
+
+		motors.motors[motor].enabled = 1;
+
+		return 1; //Indicates enable/disable status changed
+	}
+
+	return 0; // Indicates nothing changed
+}
+
+uint8_t CheckChangeDirectionMotor(DRIVE_MOTOR motor)
+{
+	if (motor != DRIVE_PITCH && motor != DRIVE_MAST)
+		return 0;
+
+	if (motors.motors[motor].mode == MODE_MANUAL)
+	{
+		// Check for change of direction
+		if (motors.motors[motor].manual_direction != motors.motors[motor].prev_manual_direction)
 		{
-			Step(DRIVE_PITCH);
+			SetDirection(motor, motors.motors[motor].manual_direction);
+			delay_us(20);
+
+			motors.motors[motor].prev_manual_direction = motors.motors[motor].manual_direction;
+
+			return 1; // Indicates direction changed
 		}
 	}
+	else if (motors.motors[motor].mode == MODE_AUTOMATIC)
+	{
+		// Check for change of direction
+		if (motors.motors[motor].auto_direction != motors.motors[motor].prev_auto_direction)
+		{
+			SetDirection(motor, motors.motors[motor].auto_direction);
+			delay_us(20);
+
+			motors.motors[motor].prev_auto_direction = motors.motors[motor].auto_direction;
+
+			return 1; // Indicates direction changed
+		}
+	}
+
+	return 0; // Indicates direction did not change
+}
+
+uint32_t DoStatePitchControl()
+{
+	// Check if requested disable of drive
+	CheckEnableDisableMotor(DRIVE_PITCH);
+
+	// Check change of direction
+	CheckChangeDirectionMotor(DRIVE_PITCH);
+
+	if (motors.pitch_motor.enabled)
+	{
+		// Only try to turn the motor if the pitch drive is enabled
+		if (motors.pitch_motor.mode == MODE_MANUAL)
+		{
+			// Check if manual command was set
+			if (motors.pitch_motor.manual_command)
+			{
+				Step(DRIVE_PITCH);
+				for (int i = 0; i < 400; ++i);
+			}
+		}
+		else if (motors.pitch_motor.mode == MODE_AUTOMATIC)
+		{
+			// Check if automatic command was set
+			if (motors.pitch_motor.auto_command)
+			{
+				Step(DRIVE_PITCH);
+				for (int i = 0; i < 400; ++i);
+
+				// Decrease number of steps to do
+				--motors.pitch_motor.auto_command;
+
+				// Check if command is done
+				if (motors.pitch_motor.auto_command == 0)
+				{
+					// Pitch done
+					can_tx_data.pitch_done = 1;
+
+					motors.pitch_motor.request_disable = 1;
+					motors.pitch_motor.prev_auto_direction = DIR_INVALID;
+				}
+			}
+		}
+	}
+
+	can_tx_data.pitch_motor_mode_feedback = motors.pitch_motor.mode;
+
+	// Check for faults or stall errors
+	uint8_t stall = !HAL_GPIO_ReadPin(nSTALL2_GPIO_Port, nSTALL2_Pin);
+	uint8_t fault = !HAL_GPIO_ReadPin(nFAULT2_GPIO_Port, nFAULT2_Pin);
+	can_tx_data.pitch_motor_fault_stall = (fault + (stall << 1));
+
 	return STATE_MAST_CONTROL;
 }
 
 uint32_t DoStateMastControl()
 {
-	if (mast_cmd_dir == 0)
+	// Check if requested disable of drive
+	uint8_t enableChanged = CheckEnableDisableMotor(DRIVE_MAST);
+	if (enableChanged)
 	{
-		// TODO: (Marc)  MastStop();
+		// Make sure to disable the PWMs if drive was disabled
+		if (motors.mast_motor.enabled == 0)
+		{
+			DriveMastStop();
+			delay_us(20);
+		}
 	}
-	else if (mast_cmd_dir > 0)
-	{
 
+	// Check change of direction
+	uint8_t directionChanged = CheckChangeDirectionMotor(DRIVE_MAST);
+	if (directionChanged &&
+		motors.mast_motor.enabled)
+	{
+		if ((motors.mast_motor.mode == MODE_MANUAL && motors.mast_motor.manual_direction == DIR_STOP) ||
+			(motors.mast_motor.mode == MODE_AUTOMATIC && motors.mast_motor.auto_direction == DIR_STOP))
+		{
+			DriveMastStop();
+			delay_us(20);
+		}
+		else if ((motors.mast_motor.mode == MODE_MANUAL && motors.mast_motor.manual_direction == DIR_LEFT) ||
+				 (motors.mast_motor.mode == MODE_AUTOMATIC && motors.mast_motor.auto_direction == DIR_LEFT))
+		{
+			DriveMastLeft();
+			delay_us(20);
+		}
+		else if ((motors.mast_motor.mode == MODE_MANUAL && motors.mast_motor.manual_direction == DIR_RIGHT) ||
+				 (motors.mast_motor.mode == MODE_AUTOMATIC && motors.mast_motor.auto_direction == DIR_RIGHT))
+		{
+			DriveMastRight();
+			delay_us(20);
+		}
 	}
+
+	/*
+	if (motors.mast_motor.enabled)
+	{
+		// Only try to turn the mast motor if mast drive is enabled
+		if (motors.mast_motor.mode == MODE_MANUAL)
+		{
+			// Check if manual command was set
+			if (motors.mast_motor.manual_command)
+			{
+				for (int i = 0; i < 400; ++i);
+			}
+		}
+		else if (motors.mast_motor.mode == MODE_AUTOMATIC)
+		{
+			// Check if automatic command was set
+			if (motors.mast_motor.auto_command)
+			{
+				for (int i = 0; i < 400; ++i);
+			}
+		}
+	}
+	*/
+
+	can_tx_data.mast_motor_mode_feedback = motors.mast_motor.mode;
+
+	// Check for faults or stall errors
+	uint8_t stall = !HAL_GPIO_ReadPin(nSTALL1_GPIO_Port, nSTALL1_Pin);
+	uint8_t fault = !HAL_GPIO_ReadPin(nFAULT1_GPIO_Port, nFAULT1_Pin);
+	can_tx_data.mast_motor_fault_stall = (fault + (stall << 1));
+
 	return STATE_CAN;
 }
 
 uint32_t DoStateCAN()
 {
+	if (flag_can_tx_send) // Sent every 50ms
+	{
+		flag_can_tx_send = 0;
+
+		TransmitCAN(DRIVEMOTOR_PITCH_BEMF, (uint8_t*)&can_tx_data.pitch_motor_bemf, 4, 0);
+		delay_us(50);
+
+		TransmitCAN(DRIVEMOTOR_MAST_BEMF, (uint8_t*)&can_tx_data.mast_motor_bemf, 4, 0);
+		delay_us(50);
+
+		TransmitCAN(DRIVEMOTOR_PITCH_MODE_FEEDBACK, (uint8_t*)&can_tx_data.pitch_motor_mode_feedback, 4, 0);
+		delay_us(50);
+
+		TransmitCAN(DRIVEMOTOR_MAST_MODE_FEEDBACK, (uint8_t*)&can_tx_data.mast_motor_mode_feedback, 4, 0);
+		delay_us(50);
+
+		TransmitCAN(DRIVEMOTOR_PITCH_DONE, (uint8_t*)&can_tx_data.pitch_done, 4, 0);
+		delay_us(50);
+
+		TransmitCAN(DRIVEMOTOR_PITCH_FAULT_STALL, (uint8_t*)&can_tx_data.pitch_motor_fault_stall, 4, 0);
+		delay_us(50);
+
+		TransmitCAN(DRIVEMOTOR_MAST_FAULT_STALL, (uint8_t*)&can_tx_data.mast_motor_fault_stall, 4, 0);
+		delay_us(50);
+	}
+
 	return STATE_PITCH_CONTROL;
 }
 
@@ -320,100 +677,197 @@ void SetPWM(uint32_t pwm, uint16_t value)
 }
 */
 
+void SetMotorMode(DRIVE_MOTOR motor, uint32_t can_value)
+{
+	uint32_t motor_mode = MODE_MANUAL;
+	if (can_value == MOTOR_MODE_MANUAL)
+		motor_mode = MODE_MANUAL;
+	else if (can_value == MOTOR_MODE_AUTOMATIC)
+		motor_mode = MODE_AUTOMATIC;
+	else
+		return; // Do not set motor mode if mode value from CAN is invalid
+
+	if (motor == DRIVE_PITCH)
+		motors.pitch_motor.mode = motor_mode;
+	else if (motor == DRIVE_MAST)
+		motors.mast_motor.mode = motor_mode;
+}
+
+void SetMotorManualCommand(DRIVE_MOTOR motor, int32_t can_value)
+{
+	// Process manual command
+	// CAN data = direction of turn (STOP, LEFT or RIGHT)
+	// command set to 1 to indicate indefinite turning until stopped
+	uint32_t motor_direction = DIR_INVALID;
+	if (can_value == MOTOR_DIRECTION_STOP)
+		motor_direction = DIR_STOP;
+	else if (can_value == MOTOR_DIRECTION_LEFT)
+		motor_direction = DIR_LEFT;
+	else if (can_value == MOTOR_DIRECTION_RIGHT)
+		motor_direction = DIR_RIGHT;
+
+	if (motor_direction == DIR_INVALID)
+		return;
+
+	if (motors.motors[motor].mode == MODE_MANUAL)
+		motors.motors[motor].request_enable = 1;
+	motors.motors[motor].manual_direction = motor_direction;
+	motors.motors[motor].manual_command = 1;
+}
+
 void ProcessCanMessage()
 {
-	typedef union RxToInt_
+	typedef union BytesToType_
 	{
 		struct
 		{
 			uint8_t bytes[4];
 		};
 		int32_t int_val;
-	} RxToInt;
-	static RxToInt rxToInt;
+		uint32_t uint_val;
+		float float_val;
+	} BytesToType;
+	static BytesToType bytesToType;
 
-	if (pRxHeader.StdId == MARIO_PITCH_MANUAL_CMD)
+
+	HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
+
+	// Technically CAN data can be 8 bytes but we only send 4-bytes data to the motor driver
+	// uint32_t upper_can_data = rxData[4] | (rxData[5] << 8) | (rxData[6] << 16) | (rxData[7] << 24);
+	uint32_t can_data = rxData[0] | (rxData[1] << 8) | (rxData[2] << 16) | (rxData[3] << 24);
+
+	//
+	// Motor Modes
+	//
+	// TODO: (Marc) Should one have precedence over the other ? What if steering wheel sets mode that is then overwritten by mario ?
+	if (pRxHeader.StdId == MARIO_PITCH_MODE_CMD)
 	{
-		// HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, 1);
-
-		uint32_t can_data = rxData[0] | (rxData[1] << 8) | (rxData[2] << 16) | (rxData[3] << 24);
-		if (can_data == MOTOR_DIRECTION_STOP)
-		{
-			mot_step = 0;
-			// HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, 0);
-		}
-		else if (can_data == MOTOR_DIRECTION_RIGHT)
-		{
-			// HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, 1);
-
-			// Left
-			mot_direction = 0;
-			mot_step = 1;
-		}
-		else if (can_data == MOTOR_DIRECTION_LEFT)
-		{
-			// HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, 1);
-
-			mot_direction = 1;
-			mot_step = 1;
-		}
-	}
-	else if (pRxHeader.StdId == MARIO_PITCH_MODE_CMD)
-	{
-		pitch_mode = rxData[0];
+		SetMotorMode(DRIVE_PITCH, can_data);
 	}
 	else if (pRxHeader.StdId == MARIO_MAST_MODE_CMD)
 	{
-		mast_mode = rxData[0];
+		SetMotorMode(DRIVE_MAST, can_data);
 	}
+	else if (pRxHeader.StdId == VOLANT_PITCH_MODE_CMD)
+	{
+		SetMotorMode(DRIVE_PITCH, can_data);
+	}
+	else if (pRxHeader.StdId == VOLANT_MAST_MODE_CMD)
+	{
+		SetMotorMode(DRIVE_MAST, can_data);
+	}
+	//
+	// MARIO Manual motor commands
+	//
+	if (pRxHeader.StdId == MARIO_PITCH_MANUAL_CMD)
+	{
+		SetMotorManualCommand(DRIVE_PITCH, can_data);
+	}
+	else if (pRxHeader.StdId == MARIO_MAST_MANUAL_CMD)
+	{
+		SetMotorManualCommand(DRIVE_MAST, can_data);
+	}
+	//
+	// Volant Manual motor commands
+	//
+	else if (pRxHeader.StdId == VOLANT_MANUAL_PITCH_CMD)
+	{
+		SetMotorManualCommand(DRIVE_PITCH, can_data);
+	}
+	else if (pRxHeader.StdId == VOLANT_MANUAL_MAST_CMD)
+	{
+		memcpy(bytesToType.bytes, rxData, 4);
+		int32_t cmd_val = bytesToType.int_val;
+
+		// Get the direction of turn from the sign of the value
+		if (cmd_val == 0)
+			motors.mast_motor.manual_direction = DIR_STOP;
+		else if (cmd_val > 0)
+			motors.mast_motor.manual_direction = DIR_LEFT;
+		else
+			motors.mast_motor.manual_direction = DIR_RIGHT;
+
+		if (motors.mast_motor.mode == MODE_MANUAL)
+			motors.mast_motor.request_enable = 1;
+		motors.mast_motor.manual_command = 1;
+	}
+	//
+	// MARIO Automatic motor commands
+	//
+	else if (pRxHeader.StdId == MARIO_PITCH_CMD)
+	{
+		// Automatic Mode Mario pitch command -> number of steps to turn
+		// >0 indicates left, <0 indicates right
+		memcpy(bytesToType.bytes, rxData, 4);
+		int32_t cmd_val = bytesToType.int_val;
+
+		if (cmd_val == 0)
+			motors.pitch_motor.auto_direction = DIR_STOP;
+		else if (cmd_val > 0)
+			motors.pitch_motor.auto_direction = DIR_LEFT;
+		else
+			motors.pitch_motor.auto_direction = DIR_RIGHT;
+
+		if (motors.pitch_motor.mode == MODE_AUTOMATIC)
+			motors.pitch_motor.request_enable = 1;
+		motors.pitch_motor.auto_command = abs(cmd_val); // Number of steps to turn
+
+		can_tx_data.pitch_done = 0; // New command, pitch is not done
+	}
+	else if (pRxHeader.StdId == MARIO_MAST_CMD)
+	{
+		// Automatic Mode MArio mast command -> number of steps to turn
+		memcpy(bytesToType.bytes, rxData, 4);
+		int32_t cmd_val = bytesToType.int_val;
+
+		if (cmd_val == 0)
+			motors.mast_motor.auto_direction = DIR_STOP;
+		else if (cmd_val > 0)
+			motors.mast_motor.auto_direction = DIR_LEFT;
+		else
+			motors.mast_motor.auto_direction = DIR_RIGHT;
+
+		if (motors.mast_motor.mode == MODE_AUTOMATIC)
+			motors.mast_motor.request_enable = 1;
+		motors.mast_motor.auto_command = 1;  // Turn is activated
+	}
+	//
+	// ROPS + Error commands
+	//
 	else if (pRxHeader.StdId == MARIO_ROPS_CMD)
 	{
 		b_rops = 1;
+		motors.pitch_motor.request_enable = 1;
 	}
 	else if (pRxHeader.StdId == MARIO_PITCH_EMERGENCY_STOP)
 	{
 		b_emergency_stop = 1;
+		motors.pitch_motor.request_disable = 1;
 	}
 	else if (pRxHeader.StdId == MARIO_MAST_EMERGENCY_STOP)
 	{
 		b_emergency_stop = 1;
+		motors.mast_motor.request_disable = 1;
 	}
 	else if (pRxHeader.StdId == MARIO_DRIVE_MOTOR_RESET)
 	{
-		// TODO: (Marc) Implement soft reset
-	}
-	else if (pRxHeader.StdId == MARIO_PITCH_CMD)
-	{
-		memcpy(rxToInt.bytes, rxData, 4);
-		pitch_cmd_nbr_steps = rxToInt.int_val;
-	}
-	else if (pRxHeader.StdId == MARIO_MAST_CMD)
-	{
-		memcpy(rxToInt.bytes, rxData, 4);
-		mast_cmd_dir = rxToInt.int_val;
-	}
-	// Volant commands
-	else if (pRxHeader.StdId == VOLANT_PITCH_MODE_CMD)
-	{
-		pitch_mode = rxData[0];
-	}
-	else if (pRxHeader.StdId == VOLANT_MAST_MODE_CMD)
-	{
-		mast_mode = rxData[0];
-	}
-	else if (pRxHeader.StdId == VOLANT_MANUAL_PITCH_CMD)
-	{
-		uint32_t manual_pitch_dir;
-		memcpy(&manual_pitch_dir, rxData, 4);
-	}
-	else if (pRxHeader.StdId == VOLANT_MANUAL_MAST_CMD)
-	{
-		uint32_t manual_mast_dir;
-		memcpy(&manual_mast_dir, rxData, 4);
+		// TODO: (Marc) Implement soft reset of MCU ?
+		motors.pitch_motor.request_disable = 1;
+		motors.mast_motor.request_disable = 1;
+
+		DoStateInit();
 	}
 	else if (pRxHeader.StdId == VOLANT_MANUAL_ROPS_CMD)
 	{
 		b_rops = 1;
+		motors.pitch_motor.request_enable = 1;
+	}
+	//
+	// Mario Sensor data
+	//
+	else if (pRxHeader.StdId == MARIO_MOTOR_ROTOR_RPM)
+	{
+		// TODO: (Marc) Auto ROPS based on value of rotor RPM ?
 	}
 	else
 	{
@@ -463,17 +917,6 @@ void HAL_CAN_ErrorCallback(CAN_HandleTypeDef* hcan)
 	//HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
 }
 
-
-/*
-// Motor modes
-#define VOLANT_PITCH_MODE_CMD 0x31
-#define VOLANT_MAST_MODE_CMD 0x32
-
-// Motor Manual Control commands
-#define VOLANT_MANUAL_PITCH_DIR 0x33
-#define VOLANT_MANUAL_MAST_DIR 0x34
-#define VOLANT_MANUAL_ROPS_CMD 0x35
-*/
 
 HAL_StatusTypeDef TransmitCAN(uint8_t id, uint8_t* buf, uint8_t size, uint8_t with_priority)
 {
@@ -576,25 +1019,15 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   HAL_Delay(10);
-  DoStateInit();
+  // DoStateInit();
 
-  HAL_GPIO_WritePin(LED_CANA_GPIO_Port, LED_CANA_Pin, 0);
-  HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, 0);
-  //HAL_GPIO_WritePin(LED_CANA_GPIO_Port, LED_CANA_Pin, 1);
-  //HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, 1);
+  while (1)
+  {
+	  ExecuteStateMachine();
 
-  HAL_Delay(10);
-  EnableDriveExternalPWM(DRIVE_MAST);
-  HAL_Delay(10);
-
-  //SetDirection(DRIVE_PITCH, DIR_FORWARD);
-  //SetDirection(DRIVE_MAST, DIR_FORWARD);
-
-  // HAL_GPIO_WritePin(TEST_BIN1_GPIO_Port, TEST_BIN1_Pin, GPIO_PIN_SET);
-  // HAL_GPIO_WritePin(TEST_BIN2_GPIO_Port, TEST_BIN2_Pin, GPIO_PIN_SET);
-
-  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);
+	  // Make sure State machine is not using 100% of cpu
+	  delay_us(50);
+  }
 
   // Set duty cycles
   //SetPWM(PWM1, 480);
@@ -610,9 +1043,6 @@ int main(void)
   // SetDirection(DRIVE_PITCH, mot_direction);
   // HAL_Delay(5);
   // SetDirection(DRIVE_MAST, mot_direction);
-
-  uint8_t drive_pitch_enabled = 0;
-  DisableDrive(DRIVE_PITCH);
 
   while (1)
   {
@@ -639,6 +1069,9 @@ int main(void)
 	  //Step(DRIVE_MAST);
 	  //Step(DRIVE_PITCH);
 
+
+
+	  /*
 	  for (int i = 0; i < 1000; ++i) {}
 	  // DEBUG_SPI(DRIVE_MAST);
 
@@ -737,6 +1170,7 @@ int main(void)
 	  {
 		  //HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_RESET);
 	  }
+	  */
 
 	  // HAL_Delay(250);
 	  // ExecuteStateMachine();
@@ -827,7 +1261,7 @@ static void MX_CAN1_Init(void)
   }
   /* USER CODE BEGIN CAN1_Init 2 */
 
-
+/*
   CAN_FilterTypeDef filter_all;
   	// All common bits go into the ID register
   filter_all.FilterIdHigh = 0x0000;
@@ -847,9 +1281,9 @@ static void MX_CAN1_Init(void)
   	{
   	  Error_Handler();
   	}
+*/
 
 
-    /*
 	CAN_FilterTypeDef sf_fifo0;
 	// All common bits go into the ID register
 	sf_fifo0.FilterIdHigh = DRIVEMOTOR_FIFO0_RX_FILTER_ID_HIGH;
@@ -889,7 +1323,6 @@ static void MX_CAN1_Init(void)
 	{
 	  Error_Handler();
 	}
-	*/
 
 
 

@@ -222,7 +222,8 @@ void SendDriveRegisters(DRIVE_MOTOR drive_index)
 void InitRegValues(DRIVE_MOTOR drive_index)
 {
 	// CTRL register
-	drive_regs[drive_index].ctrl_reg.enbl = 1;	// Enable motor
+	// drive_regs[drive_index].ctrl_reg.enbl = 1;	// Enable motor
+	drive_regs[drive_index].ctrl_reg.enbl = 0;	// Disable motor drive by default
 	drive_regs[drive_index].ctrl_reg.rdir = 0;	// Direction set by DIR pin
 	drive_regs[drive_index].ctrl_reg.rstep = 0;	// No automatic stepping
 	drive_regs[drive_index].ctrl_reg.mode = 0b0010;	// 1/4 step
@@ -265,7 +266,8 @@ void InitRegValues(DRIVE_MOTOR drive_index)
 void InitRegValuesPWM(DRIVE_MOTOR drive_index)
 {
 	// CTRL register
-	drive_regs[drive_index].ctrl_reg.enbl = 1;	// Enable motor
+	// drive_regs[drive_index].ctrl_reg.enbl = 1;	// Enable motor
+	drive_regs[drive_index].ctrl_reg.enbl = 0;	// Disable motor drive by default
 	drive_regs[drive_index].ctrl_reg.rdir = 0;	// Direction set by DIR pin
 	drive_regs[drive_index].ctrl_reg.rstep = 0;	// No automatic stepping
 	//drive_regs[drive_index].ctrl_reg.mode = 0b0010;	// 1/4 step
@@ -310,7 +312,8 @@ void InitRegValuesPWM(DRIVE_MOTOR drive_index)
 void InitRegValues2(DRIVE_MOTOR drive_index)
 {
 	// CTRL register
-	drive_regs[drive_index].ctrl_reg.enbl = 1;	// Enable motor
+	// drive_regs[drive_index].ctrl_reg.enbl = 1;	// Enable motor
+	drive_regs[drive_index].ctrl_reg.enbl = 0;	// Disable motor drive by default
 	drive_regs[drive_index].ctrl_reg.rdir = 0;	// Direction set by DIR pin
 	drive_regs[drive_index].ctrl_reg.rstep = 0;	// No automatic stepping
 	//drive_regs[drive_index].ctrl_reg.mode = 0b0010;	// 1/4 step

@@ -56,21 +56,14 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 
-enum MOTOR_MODES
+typedef enum
 {
 	MODE_MANUAL = 0,
 	MODE_AUTOMATIC
-};
+} MOTOR_MODES;
 
 extern uint8_t b_timer500ms_flag;
 extern uint8_t b_timer50ms_flag;
-
-extern uint8_t pitch_mode;
-extern uint8_t mast_mode;
-
-extern int32_t pitch_cmd_nbr_steps;
-extern int32_t mast_cmd_dir;
-
 
 extern uint8_t can1_recv_flag;
 
