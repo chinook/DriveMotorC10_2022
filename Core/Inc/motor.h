@@ -19,8 +19,8 @@ typedef enum
 	DRIVE_MOTOR_NUM
 } DRIVE_MOTOR;
 
-#define DRIVE_PITCH DRIVE1
-#define DRIVE_MAST  DRIVE2
+#define DRIVE_MAST  DRIVE1
+#define DRIVE_PITCH DRIVE2
 
 // DRV8711 Register map addresses
 typedef enum
@@ -54,24 +54,28 @@ typedef struct
 {
 	uint32_t torque : 8;
 	uint32_t smplth : 3;
+	uint32_t reserved : 1;
 } TORQUE_REG;
 
 typedef struct
 {
 	uint32_t toff : 8;
 	uint32_t pwmmode : 1;
+	uint32_t reserved : 3;
 } OFF_REG;
 
 typedef struct
 {
 	uint32_t tblank : 8;
 	uint32_t abt : 1;
+	uint32_t reserved : 3;
 } BLANK_REG;
 
 typedef struct
 {
 	uint32_t tdecay : 8;
 	uint32_t decmod : 3;
+	uint32_t reserved : 1;
 } DECAY_REG;
 
 typedef struct
@@ -129,9 +133,13 @@ enum DRIVE_STATUS
 
 
 extern SPI_HandleTypeDef* hspi;
-extern TIM_HandleTypeDef* htim;
+extern TIM_HandleTypeDef* pwm1_timer;
+extern TIM_HandleTypeDef* pwm2_timer;
+extern uint32_t pwm1_channel;
+extern uint32_t pwm2_channel;
 
-void InitDrives(SPI_HandleTypeDef* hspi, TIM_HandleTypeDef* htim1);
+void InitDrives(SPI_HandleTypeDef* hspi, TIM_HandleTypeDef* htim_pwm1, uint32_t channel_pwm1,
+										 TIM_HandleTypeDef* htim_pwm2, uint32_t channel_pwm2);
 
 
 void EnableDrive(DRIVE_MOTOR drive_index);
@@ -149,6 +157,11 @@ void EnableDriveIndexer(DRIVE_MOTOR drive_index);
 void EnableDriveExternalPWM(DRIVE_MOTOR drive_index);
 
 void Step(DRIVE_MOTOR drive_index);
+
+void SetDutyCycle(uint32_t pwm_index, uint16_t duty_cycle);
+void DriveMastRight();
+void DriveMastLeft();
+void DriveMastStop();
 
 void DEBUG_SPI(DRIVE_MOTOR drive_index);
 

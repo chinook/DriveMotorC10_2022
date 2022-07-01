@@ -74,6 +74,7 @@ TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim5;
+TIM_HandleTypeDef htim6;
 
 UART_HandleTypeDef huart2;
 
@@ -120,10 +121,11 @@ static void MX_I2C3_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM1_Init(void);
-static void MX_TIM3_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM5_Init(void);
+static void MX_TIM3_Init(void);
+static void MX_TIM6_Init(void);
 /* USER CODE BEGIN PFP */
 
 void ExecuteStateMachine();
@@ -138,6 +140,7 @@ uint32_t DoStateEmergencyStop();
 
 void DoStateError();
 
+// void SetPWM(uint32_t pwm, uint16_t value);
 
 void ProcessCanMessage();
 void CAN_ReceiveFifoCallback(CAN_HandleTypeDef* hcan, uint32_t fifo);
@@ -242,7 +245,7 @@ uint32_t DoStateInit()
 
 	can1_recv_flag = 0;
 
-	InitDrives(&hspi1, &htim1);
+	InitDrives(&hspi1, &htim1, TIM_CHANNEL_2, &htim3, TIM_CHANNEL_3);
 
 	return STATE_PITCH_CONTROL;
 }
@@ -301,6 +304,21 @@ void DoStateError()
 	Error_Handler();
 }
 
+/*
+void SetPWM(uint32_t pwm, uint16_t value)
+{
+	HAL_TIM_PWM_Stop(pwm_timers[pwm], pwm_channels[pwm]);
+
+	TIM_OC_InitTypeDef sConfigOC;
+
+	sConfigOC.OCMode = TIM_OCMODE_PWM1;
+	sConfigOC.Pulse = value;
+	sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+	sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+	HAL_TIM_PWM_ConfigChannel(pwm_timers[pwm], &sConfigOC, pwm_channels[pwm]);
+	// HAL_TIM_PWM_Start(pwm_timers[pwm], pwm_channels[pwm]);
+}
+*/
 
 void ProcessCanMessage()
 {
@@ -422,7 +440,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef* hcan)
 	HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
 
 	CAN_ReceiveFifoCallback(hcan, CAN_RX_FIFO0);
-	CAN_ReceiveFifoCallback(hcan, CAN_RX_FIFO1);
+	//CAN_ReceiveFifoCallback(hcan, CAN_RX_FIFO1);
 }
 
 
@@ -541,13 +559,15 @@ int main(void)
   MX_SPI1_Init();
   MX_USART2_UART_Init();
   MX_TIM1_Init();
-  MX_TIM3_Init();
   MX_TIM2_Init();
   MX_TIM4_Init();
   MX_TIM5_Init();
+  MX_TIM3_Init();
+  MX_TIM6_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_TIM_Base_Start_IT(&htim3);
+  HAL_TIM_Base_Start_IT(&htim6);
+  HAL_TIM_Base_Start_IT(&htim4);
 
   current_state = STATE_INIT;
 
@@ -563,11 +583,36 @@ int main(void)
   //HAL_GPIO_WritePin(LED_CANA_GPIO_Port, LED_CANA_Pin, 1);
   //HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, 1);
 
-  //SetDirection(DRIVE_PITCH, DIR_FORWARD);
-  //SetDirection(DRIVE_MAST, DIR_FORWARD);
+  HAL_Delay(10);
+  EnableDriveExternalPWM(DRIVE_MAST);
   HAL_Delay(10);
 
-  SetDirection(DRIVE_MAST, mot_direction);
+  //SetDirection(DRIVE_PITCH, DIR_FORWARD);
+  //SetDirection(DRIVE_MAST, DIR_FORWARD);
+
+  // HAL_GPIO_WritePin(TEST_BIN1_GPIO_Port, TEST_BIN1_Pin, GPIO_PIN_SET);
+  // HAL_GPIO_WritePin(TEST_BIN2_GPIO_Port, TEST_BIN2_Pin, GPIO_PIN_SET);
+
+  HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);
+
+  // Set duty cycles
+  //SetPWM(PWM1, 480);
+  //SetPWM(PWM2, 420);
+  //SetPWM(PWM1, 480);
+  //SetPWM(PWM2, 350);
+
+  //HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+  //HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
+
+  // HAL_Delay(10);
+
+  // SetDirection(DRIVE_PITCH, mot_direction);
+  // HAL_Delay(5);
+  // SetDirection(DRIVE_MAST, mot_direction);
+
+  uint8_t drive_pitch_enabled = 0;
+  DisableDrive(DRIVE_PITCH);
 
   while (1)
   {
@@ -579,6 +624,8 @@ int main(void)
 		  b_timer500ms_flag = 0;
 
 		  HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);
+
+		  // HAL_GPIO_TogglePin(TEST_BIN1_GPIO_Port, TEST_BIN1_Pin);
 	  }
 
 	  // HAL_CAN_GetRxFifoFillLevel();
@@ -637,13 +684,42 @@ int main(void)
 
 	  if (update_dir)
 	  {
-		  SetDirection(DRIVE_MAST, mot_direction);
+		  SetDirection(DRIVE_PITCH, mot_direction);
 		  for (int i = 0; i < 2000; ++i) {}
 	  }
 
 	  if (step)
 	  {
-		  Step(DRIVE_MAST);
+		  if (!drive_pitch_enabled)
+		  {
+			  EnableDrive(DRIVE_PITCH);
+			  drive_pitch_enabled = 1;
+			  HAL_Delay(1);
+		  }
+		  // Step(DRIVE_PITCH);
+
+		  if (mot_direction == 0)
+		  {
+			  DriveMastRight();
+			  //Step(DRIVE_PITCH);
+		  }
+		  else
+		  {
+			  // DriveMastLeft();
+			  Step(DRIVE_PITCH);
+		  }
+
+		  for (int i = 0; i < 1000; ++i) {}
+	  }
+	  else
+	  {
+		  DriveMastStop();
+		  if (drive_pitch_enabled)
+		  {
+			  DisableDrive(DRIVE_PITCH);
+			  drive_pitch_enabled = 0;
+
+		  }
 		  for (int i = 0; i < 1000; ++i) {}
 	  }
 
@@ -653,7 +729,7 @@ int main(void)
 	  uint8_t fault1 = HAL_GPIO_ReadPin(nFAULT1_GPIO_Port, nFAULT1_Pin);
 
 	  uint8_t fault2 = HAL_GPIO_ReadPin(nFAULT2_GPIO_Port, nFAULT2_Pin);
-	  if (fault2 == 0)
+	  if (fault1 == 0)
 	  {
 		  //HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
 	  }
@@ -751,7 +827,7 @@ static void MX_CAN1_Init(void)
   }
   /* USER CODE BEGIN CAN1_Init 2 */
 
-  /*
+
   CAN_FilterTypeDef filter_all;
   	// All common bits go into the ID register
   filter_all.FilterIdHigh = 0x0000;
@@ -771,9 +847,9 @@ static void MX_CAN1_Init(void)
   	{
   	  Error_Handler();
   	}
-  	*/
 
 
+    /*
 	CAN_FilterTypeDef sf_fifo0;
 	// All common bits go into the ID register
 	sf_fifo0.FilterIdHigh = DRIVEMOTOR_FIFO0_RX_FILTER_ID_HIGH;
@@ -813,6 +889,7 @@ static void MX_CAN1_Init(void)
 	{
 	  Error_Handler();
 	}
+	*/
 
 
 
@@ -1128,16 +1205,17 @@ static void MX_TIM3_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
 
   /* USER CODE BEGIN TIM3_Init 1 */
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 480;
+  htim3.Init.Prescaler = 48;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 50000;
+  htim3.Init.Period = 500;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
   {
     Error_Handler();
@@ -1147,15 +1225,28 @@ static void MX_TIM3_Init(void)
   {
     Error_Handler();
   }
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE BEGIN TIM3_Init 2 */
 
   /* USER CODE END TIM3_Init 2 */
+  HAL_TIM_MspPostInit(&htim3);
 
 }
 
@@ -1248,6 +1339,44 @@ static void MX_TIM5_Init(void)
   HAL_TIM_Base_Start(&htim5);
 
   /* USER CODE END TIM5_Init 2 */
+
+}
+
+/**
+  * @brief TIM6 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM6_Init(void)
+{
+
+  /* USER CODE BEGIN TIM6_Init 0 */
+
+  /* USER CODE END TIM6_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM6_Init 1 */
+
+  /* USER CODE END TIM6_Init 1 */
+  htim6.Instance = TIM6;
+  htim6.Init.Prescaler = 480;
+  htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim6.Init.Period = 50000;
+  htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM6_Init 2 */
+
+  /* USER CODE END TIM6_Init 2 */
 
 }
 
