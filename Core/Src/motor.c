@@ -8,6 +8,9 @@
 #include "motor.h"
 #include "main.h"
 
+#include <stdio.h>
+#include <string.h>
+
 #define PWM_PERIOD 500
 
 
@@ -318,7 +321,11 @@ void InitRegValues2(DRIVE_MOTOR drive_index)
 	drive_regs[drive_index].ctrl_reg.rstep = 0;	// No automatic stepping
 	//drive_regs[drive_index].ctrl_reg.mode = 0b0010;	// 1/4 step
 	if (drive_index == DRIVE_PITCH)
-		drive_regs[drive_index].ctrl_reg.mode = 0b0001;	// 1/2 step
+	{
+		drive_regs[drive_index].ctrl_reg.mode = 0b0010;	// 1/4 step
+		//drive_regs[drive_index].ctrl_reg.mode = 0b0001;	// 1/2 step
+		//drive_regs[drive_index].ctrl_reg.mode = 0b0000;	// Full step
+	}
 	else
 		drive_regs[drive_index].ctrl_reg.mode = 0b0000;	// Full step
 	drive_regs[drive_index].ctrl_reg.extstall = 0;	// Internal stall detect
@@ -386,6 +393,9 @@ void InitDriveMotor(DRIVE_MOTOR drive_index)
 
 	// Send regs over SPI
 	SendDriveRegisters(drive_index);
+
+	HAL_Delay(10);
+	ResetStatusRegisters(drive_index);
 }
 
 
@@ -410,7 +420,20 @@ void DisableDrive(DRIVE_MOTOR drive_index)
 	TransmitMotorSPI(drive_index, DRV8711_CTRL_REG);
 
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-						  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+				 	  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+}
+
+void ResetStatusRegisters(DRIVE_MOTOR drive_index)
+{
+	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+							  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+
+	// drive_regs[drive_index].status_reg = {0};
+	memset(&drive_regs[drive_index].status_reg, 0, sizeof(STATUS_REG));
+	TransmitMotorSPI(drive_index, DRV8711_CTRL_REG);
+
+	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
 }
 
 void ResetDrive(DRIVE_MOTOR drive_index)
@@ -443,7 +466,7 @@ uint32_t IsDriveAwake(DRIVE_MOTOR drive_index)
 
 void SetDirection(DRIVE_MOTOR drive_index, uint32_t direction)
 {
-	GPIO_PinState state = (direction == DIR_FORWARD) ? 1 : 0;
+	GPIO_PinState state = (direction == DIR_RIGHT) ? 1 : 0;
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_DIR],
 					  drive_pins[drive_index][DRIVE_DIR], state);
 }
@@ -475,11 +498,11 @@ void Step(DRIVE_MOTOR drive_index)
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
 					  drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_SET);
 	//HAL_Delay(5);
-	for (int i = 0; i < 45; ++i) {}
+	for (int i = 0; i < 90; ++i) {}
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
 					  drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_RESET);
 	//HAL_Delay(5);
-	for (int i = 0; i < 45; ++i) {}
+	for (int i = 0; i < 90; ++i) {}
 }
 
 

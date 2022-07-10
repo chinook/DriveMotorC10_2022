@@ -65,7 +65,6 @@ enum STATES
 
 /* Private variables ---------------------------------------------------------*/
 CAN_HandleTypeDef hcan1;
-CAN_HandleTypeDef hcan2;
 
 I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c3;
@@ -78,6 +77,7 @@ TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim5;
 TIM_HandleTypeDef htim6;
+TIM_HandleTypeDef htim7;
 
 UART_HandleTypeDef huart2;
 
@@ -89,6 +89,7 @@ uint8_t b_emergency_stop = 0;
 
 uint8_t b_timer500ms_flag = 0;
 uint8_t b_timer50ms_flag = 0;
+uint8_t b_timer250ms_flag = 0;
 
 
 uint8_t flag_can_tx_send = 0;
@@ -127,14 +128,6 @@ CAN_TX_Data can_tx_data;
 // Motor control
 //
 
-typedef enum
-{
-	DIR_STOP = 0,
-	DIR_LEFT,
-	DIR_RIGHT,
-
-	DIR_INVALID
-} MOTOR_DIRECTION;
 
 typedef struct MotorStatus_
 {
@@ -159,12 +152,18 @@ typedef union
 {
 	struct
 	{
-		MotorStatus pitch_motor;
 		MotorStatus mast_motor;
+		MotorStatus pitch_motor;
 	};
 	MotorStatus motors[2];
 } Motors;
 Motors motors;
+
+
+// TEMP TEMP
+
+uint8_t pb1_value, pb2_value;
+uint8_t pb1_update, pb2_update;
 
 /* USER CODE END PV */
 
@@ -172,7 +171,6 @@ Motors motors;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_CAN1_Init(void);
-static void MX_CAN2_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_I2C3_Init(void);
 static void MX_SPI1_Init(void);
@@ -183,6 +181,7 @@ static void MX_TIM4_Init(void);
 static void MX_TIM5_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM6_Init(void);
+static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
 
 void ExecuteStateMachine();
@@ -210,7 +209,7 @@ void SetMotorManualCommand(DRIVE_MOTOR motor, int32_t can_value);
 void ProcessCanMessage();
 void CAN_ReceiveFifoCallback(CAN_HandleTypeDef* hcan, uint32_t fifo);
 
-HAL_StatusTypeDef TransmitCAN(uint8_t id, uint8_t* buf, uint8_t size, uint8_t with_priority);
+HAL_StatusTypeDef TransmitCAN(uint32_t id, uint8_t* buf, uint8_t size, uint8_t with_priority);
 
 /* USER CODE END PFP */
 
@@ -244,6 +243,12 @@ void ExecuteStateMachine()
 	if (b_timer50ms_flag)
 	{
 		b_timer50ms_flag = 0;
+
+		// flag_can_tx_send = 1;
+	}
+	if (b_timer250ms_flag)
+	{
+		b_timer250ms_flag = 0;
 
 		flag_can_tx_send = 1;
 	}
@@ -307,6 +312,7 @@ uint32_t DoStateInit()
 
 	b_timer500ms_flag = 0;
 	b_timer50ms_flag = 0;
+	flag_can_tx_send = 0;
 
 	can1_recv_flag = 0;
 	flag_can_tx_send = 0;
@@ -368,36 +374,107 @@ uint32_t DoStateInit()
 
 uint32_t DoStateAssessPushButtons()
 {
+	// static uint32_t motor = DRIVE_MAST;
 	static uint32_t motor = DRIVE_PITCH;
 
 	static uint8_t is_driving = 0;
+
+
+
+	uint8_t buf[4];
+	uint32_t data0 = 0x100;
+	uint32_t data1 = 0x200;
+	uint32_t data2 = 0x300;
+
+	/*
+	if(GPIO_PIN_SET == HAL_GPIO_ReadPin(PB2_GPIO_Port, PB2_Pin)) // PD_14 -- PB2
+	{
+	//HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
+	//HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
+	  if (pb2_value == 1)
+	  {
+		  pb2_value = 0;
+		  // HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
+		  // SetLed(LED2, 0);
+
+		  memcpy(buf, &data0, 4);
+		  TransmitCAN(0x81, buf, 4, 0);
+		  // TransmitCAN(0x71, buf, 4, 0);
+	  }
+	}
+	if (GPIO_PIN_SET == HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin)) // PD_15 -- PB1
+	{
+	//HAL_GPIO_TogglePin(LED3_GPIO_Port, LED3_Pin);
+	//HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
+	  if (pb1_value == 1)
+	  {
+		  pb1_value = 0;
+		  // HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
+		  // SetLed(LED3, 0);
+
+		  memcpy(buf, &data0, 4);
+		  TransmitCAN(0x81, buf, 4, 0);
+		  //TransmitCAN(0x71, buf, 4, 0);
+	  }
+	}
+
+	if (pb1_update)
+	{
+	  memcpy(buf, &data1, 4);
+	  TransmitCAN(0x81, buf, 4, 0);
+	  //TransmitCAN(0x71, buf, 4, 0);
+	  pb1_update = 0;
+	}
+	if (pb2_update)
+	{
+	  memcpy(buf, &data2, 4);
+	  TransmitCAN(0x81, buf, 4, 0);
+	  //TransmitCAN(0x71, buf, 4, 0);
+	  pb2_update = 0;
+	}
+	*/
+
+
 
 	if (motors.motors[motor].mode == MODE_MANUAL)
 	{
 		// Only update manual values if mode is manual
 		if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB2_GPIO_Port, PB2_Pin))
 		{
-			motors.motors[motor].request_enable = 1;
-			motors.motors[motor].manual_direction = DIR_LEFT;
-			motors.motors[motor].manual_command = 1;
+			if (!is_driving)
+			{
+				motors.motors[motor].request_enable = 1;
+				motors.motors[motor].manual_direction = DIR_LEFT;
+				motors.motors[motor].manual_command = 1;
 
-			is_driving = 1;
+				is_driving = 1;
+
+				//TransmitCAN(0x81, (uint8_t*)&data1, 4, 0);
+			}
 		}
 		else if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin))
 		{
-			motors.motors[motor].request_enable = 1;
-			motors.motors[motor].manual_direction = DIR_LEFT;
-			motors.motors[motor].manual_command = 1;
+			if (!is_driving)
+			{
+				motors.motors[motor].request_enable = 1;
+				motors.motors[motor].manual_direction = DIR_RIGHT;
+				motors.motors[motor].manual_command = 1;
 
-			is_driving = 1;
+				is_driving = 1;
+
+				//TransmitCAN(0x81, (uint8_t*)&data2, 4, 0);
+			}
 		}
 		else if (is_driving)
 		{
 			// If push buttons enabled motor, need to also disable/stop motor when released
 			motors.motors[motor].request_disable = 1;
 			motors.motors[motor].manual_command = 0;
+			motors.motors[motor].manual_direction = DIR_STOP;
 
 			is_driving = 0;
+
+			//TransmitCAN(0x81, (uint8_t*)&data0, 4, 0);
 		}
 	}
 
@@ -531,6 +608,11 @@ uint32_t DoStatePitchControl()
 	uint8_t fault = !HAL_GPIO_ReadPin(nFAULT2_GPIO_Port, nFAULT2_Pin);
 	can_tx_data.pitch_motor_fault_stall = (fault + (stall << 1));
 
+	if (fault)
+	{
+		ResetStatusRegisters(DRIVE_PITCH);
+	}
+
 	return STATE_MAST_CONTROL;
 }
 
@@ -603,6 +685,11 @@ uint32_t DoStateMastControl()
 	uint8_t fault = !HAL_GPIO_ReadPin(nFAULT1_GPIO_Port, nFAULT1_Pin);
 	can_tx_data.mast_motor_fault_stall = (fault + (stall << 1));
 
+	if (fault)
+	{
+		ResetStatusRegisters(DRIVE_MAST);
+	}
+
 	return STATE_CAN;
 }
 
@@ -612,16 +699,21 @@ uint32_t DoStateCAN()
 	{
 		flag_can_tx_send = 0;
 
-		TransmitCAN(DRIVEMOTOR_PITCH_BEMF, (uint8_t*)&can_tx_data.pitch_motor_bemf, 4, 0);
+
+		//TransmitCAN(DRIVEMOTOR_PITCH_BEMF, (uint8_t*)&can_tx_data.pitch_motor_bemf, 4, 0);
+		//delay_us(50);
+
+		//TransmitCAN(DRIVEMOTOR_MAST_BEMF, (uint8_t*)&can_tx_data.mast_motor_bemf, 4, 0);
+		//delay_us(50);
+
+		uint32_t pitch_mode = can_tx_data.pitch_motor_mode_feedback;
+		uint32_t pitch_mode_msg = ((pitch_mode == MODE_MANUAL) ? MOTOR_MODE_MANUAL : MOTOR_MODE_AUTOMATIC);
+		TransmitCAN(DRIVEMOTOR_PITCH_MODE_FEEDBACK, (uint8_t*)&pitch_mode_msg, 4, 0);
 		delay_us(50);
 
-		TransmitCAN(DRIVEMOTOR_MAST_BEMF, (uint8_t*)&can_tx_data.mast_motor_bemf, 4, 0);
-		delay_us(50);
-
-		TransmitCAN(DRIVEMOTOR_PITCH_MODE_FEEDBACK, (uint8_t*)&can_tx_data.pitch_motor_mode_feedback, 4, 0);
-		delay_us(50);
-
-		TransmitCAN(DRIVEMOTOR_MAST_MODE_FEEDBACK, (uint8_t*)&can_tx_data.mast_motor_mode_feedback, 4, 0);
+		uint32_t mast_mode = can_tx_data.mast_motor_mode_feedback;
+		uint32_t mast_mode_msg = ((mast_mode == MODE_MANUAL) ? MOTOR_MODE_MANUAL : MOTOR_MODE_AUTOMATIC);
+		TransmitCAN(DRIVEMOTOR_MAST_MODE_FEEDBACK, (uint8_t*)&mast_mode_msg, 4, 0);
 		delay_us(50);
 
 		TransmitCAN(DRIVEMOTOR_PITCH_DONE, (uint8_t*)&can_tx_data.pitch_done, 4, 0);
@@ -632,9 +724,11 @@ uint32_t DoStateCAN()
 
 		TransmitCAN(DRIVEMOTOR_MAST_FAULT_STALL, (uint8_t*)&can_tx_data.mast_motor_fault_stall, 4, 0);
 		delay_us(50);
+
 	}
 
-	return STATE_PITCH_CONTROL;
+	// return STATE_PITCH_CONTROL;
+	return STATE_ASSESS_PUSH_BUTTONS;
 }
 
 uint32_t DoStateROPS()
@@ -679,10 +773,12 @@ void SetPWM(uint32_t pwm, uint16_t value)
 
 void SetMotorMode(DRIVE_MOTOR motor, uint32_t can_value)
 {
+	uint8_t can_rx = (can_value & 0xFF);
+
 	uint32_t motor_mode = MODE_MANUAL;
-	if (can_value == MOTOR_MODE_MANUAL)
+	if (can_rx == MOTOR_MODE_MANUAL)
 		motor_mode = MODE_MANUAL;
-	else if (can_value == MOTOR_MODE_AUTOMATIC)
+	else if (can_rx == MOTOR_MODE_AUTOMATIC)
 		motor_mode = MODE_AUTOMATIC;
 	else
 		return; // Do not set motor mode if mode value from CAN is invalid
@@ -709,8 +805,11 @@ void SetMotorManualCommand(DRIVE_MOTOR motor, int32_t can_value)
 	if (motor_direction == DIR_INVALID)
 		return;
 
-	if (motors.motors[motor].mode == MODE_MANUAL)
+	if (motors.motors[motor].mode == MODE_MANUAL && motor_direction != DIR_STOP)
 		motors.motors[motor].request_enable = 1;
+	else if (motors.motors[motor].enabled && motor_direction == DIR_STOP)
+		motors.motors[motor].request_disable = 1;
+
 	motors.motors[motor].manual_direction = motor_direction;
 	motors.motors[motor].manual_command = 1;
 }
@@ -728,9 +827,6 @@ void ProcessCanMessage()
 		float float_val;
 	} BytesToType;
 	static BytesToType bytesToType;
-
-
-	HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
 
 	// Technically CAN data can be 8 bytes but we only send 4-bytes data to the motor driver
 	// uint32_t upper_can_data = rxData[4] | (rxData[5] << 8) | (rxData[6] << 16) | (rxData[7] << 24);
@@ -877,6 +973,7 @@ void ProcessCanMessage()
 
 void CAN_ReceiveFifoCallback(CAN_HandleTypeDef* hcan, uint32_t fifo)
 {
+
 	uint32_t num_messages = HAL_CAN_GetRxFifoFillLevel(hcan, fifo);
 	for (int i = 0; i < num_messages; ++i)
 	{
@@ -892,9 +989,13 @@ void CAN_ReceiveFifoCallback(CAN_HandleTypeDef* hcan, uint32_t fifo)
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef* hcan)
 {
 	HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
-
 	CAN_ReceiveFifoCallback(hcan, CAN_RX_FIFO0);
-	//CAN_ReceiveFifoCallback(hcan, CAN_RX_FIFO1);
+}
+
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef* hcan)
+{
+	HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
+	CAN_ReceiveFifoCallback(hcan, CAN_RX_FIFO1);
 }
 
 
@@ -918,7 +1019,7 @@ void HAL_CAN_ErrorCallback(CAN_HandleTypeDef* hcan)
 }
 
 
-HAL_StatusTypeDef TransmitCAN(uint8_t id, uint8_t* buf, uint8_t size, uint8_t with_priority)
+HAL_StatusTypeDef TransmitCAN(uint32_t id, uint8_t* buf, uint8_t size, uint8_t with_priority)
 {
 	// CAN_TxHeaderTypeDef msg;
 	pTxHeader.StdId = id;
@@ -927,11 +1028,15 @@ HAL_StatusTypeDef TransmitCAN(uint8_t id, uint8_t* buf, uint8_t size, uint8_t wi
 	pTxHeader.DLC = size; // Number of bytes to send
 	pTxHeader.TransmitGlobalTime = DISABLE;
 
+	uint8_t found_mailbox = 0;
 	for (int i = 0; i < 10; ++i)
 	{
 		// Check that mailbox is available for tx
 		if (HAL_CAN_GetTxMailboxesFreeLevel(&hcan1) > 0)
+		{
+			found_mailbox = 1;
 			break;
+		}
 		// Otherwise wait until free mailbox
 		// for (int j = 0; j < 500; ++j) {}
 		delay_us(50);
@@ -955,7 +1060,7 @@ HAL_StatusTypeDef TransmitCAN(uint8_t id, uint8_t* buf, uint8_t size, uint8_t wi
 	HAL_StatusTypeDef ret = HAL_CAN_AddTxMessage(&hcan1, &pTxHeader, buf, &mb);
 	if (ret != HAL_OK)
 	{
-		HAL_GPIO_WritePin(LED_ERROR_GPIO_Port, LED_ERROR_Pin, GPIO_PIN_SET);
+ 		HAL_GPIO_WritePin(LED_ERROR_GPIO_Port, LED_ERROR_Pin, GPIO_PIN_SET);
 		return ret;
 	}
 
@@ -996,7 +1101,6 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_CAN1_Init();
-  MX_CAN2_Init();
   MX_I2C1_Init();
   MX_I2C3_Init();
   MX_SPI1_Init();
@@ -1007,10 +1111,12 @@ int main(void)
   MX_TIM5_Init();
   MX_TIM3_Init();
   MX_TIM6_Init();
+  MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_TIM_Base_Start_IT(&htim6);
   HAL_TIM_Base_Start_IT(&htim4);
+  HAL_TIM_Base_Start_IT(&htim7);
 
   current_state = STATE_INIT;
 
@@ -1021,6 +1127,7 @@ int main(void)
   HAL_Delay(10);
   // DoStateInit();
 
+
   while (1)
   {
 	  ExecuteStateMachine();
@@ -1028,6 +1135,13 @@ int main(void)
 	  // Make sure State machine is not using 100% of cpu
 	  delay_us(50);
   }
+
+
+
+
+  HAL_Delay(10);
+  DoStateInit();
+  HAL_Delay(10);
 
   // Set duty cycles
   //SetPWM(PWM1, 480);
@@ -1043,6 +1157,9 @@ int main(void)
   // SetDirection(DRIVE_PITCH, mot_direction);
   // HAL_Delay(5);
   // SetDirection(DRIVE_MAST, mot_direction);
+
+  uint8_t drive_pitch_enabled = 0;
+  uint8_t mot_direction = 2;
 
   while (1)
   {
@@ -1071,7 +1188,7 @@ int main(void)
 
 
 
-	  /*
+
 	  for (int i = 0; i < 1000; ++i) {}
 	  // DEBUG_SPI(DRIVE_MAST);
 
@@ -1080,6 +1197,7 @@ int main(void)
 
 
 	  //if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin))
+	  /*
 	  if (mot_step)
 	  {
 		  if (mot_direction != old_mot_direction)
@@ -1090,8 +1208,9 @@ int main(void)
 
 		  step = 1;
 	  }
+	  */
 
-
+	  /*
 	  if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB2_GPIO_Port, PB2_Pin))
 	  {
 		  if (mot_direction != 1)
@@ -1108,7 +1227,8 @@ int main(void)
 
 		  step = 1;
 	  }
-	  else if (!mot_step)
+	  //else if (!mot_step)
+	  else
 	  {
 		  update_dir = 0;
 		  step = 0;
@@ -1129,24 +1249,24 @@ int main(void)
 			  drive_pitch_enabled = 1;
 			  HAL_Delay(1);
 		  }
-		  // Step(DRIVE_PITCH);
+		  Step(DRIVE_PITCH);
 
 		  if (mot_direction == 0)
 		  {
-			  DriveMastRight();
+			  //DriveMastRight();
 			  //Step(DRIVE_PITCH);
 		  }
 		  else
 		  {
 			  // DriveMastLeft();
-			  Step(DRIVE_PITCH);
+			  //Step(DRIVE_PITCH);
 		  }
 
 		  for (int i = 0; i < 1000; ++i) {}
 	  }
 	  else
 	  {
-		  DriveMastStop();
+		  // DriveMastStop();
 		  if (drive_pitch_enabled)
 		  {
 			  DisableDrive(DRIVE_PITCH);
@@ -1171,6 +1291,7 @@ int main(void)
 		  //HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_RESET);
 	  }
 	  */
+
 
 	  // HAL_Delay(250);
 	  // ExecuteStateMachine();
@@ -1246,13 +1367,13 @@ static void MX_CAN1_Init(void)
   hcan1.Instance = CAN1;
   hcan1.Init.Prescaler = 6;
   hcan1.Init.Mode = CAN_MODE_NORMAL;
-  hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
+  hcan1.Init.SyncJumpWidth = CAN_SJW_3TQ;
   hcan1.Init.TimeSeg1 = CAN_BS1_11TQ;
   hcan1.Init.TimeSeg2 = CAN_BS2_4TQ;
   hcan1.Init.TimeTriggeredMode = DISABLE;
   hcan1.Init.AutoBusOff = DISABLE;
   hcan1.Init.AutoWakeUp = DISABLE;
-  hcan1.Init.AutoRetransmission = DISABLE;
+  hcan1.Init.AutoRetransmission = ENABLE;
   hcan1.Init.ReceiveFifoLocked = DISABLE;
   hcan1.Init.TransmitFifoPriority = DISABLE;
   if (HAL_CAN_Init(&hcan1) != HAL_OK)
@@ -1261,9 +1382,11 @@ static void MX_CAN1_Init(void)
   }
   /* USER CODE BEGIN CAN1_Init 2 */
 
+
 /*
   CAN_FilterTypeDef filter_all;
   	// All common bits go into the ID register
+
   filter_all.FilterIdHigh = 0x0000;
   filter_all.FilterIdLow = 0x0000;
 
@@ -1271,12 +1394,20 @@ static void MX_CAN1_Init(void)
   filter_all.FilterMaskIdHigh = 0x0000;
   filter_all.FilterMaskIdLow = 0x0000;
 
+
+  filter_all.FilterIdHigh = 0x0000;
+  filter_all.FilterIdLow = 0x0070;
+
+  	// Which bits to compare for filter
+  filter_all.FilterMaskIdHigh = 0x0000;
+  filter_all.FilterMaskIdLow = 0x07F0;
+
   filter_all.FilterFIFOAssignment = CAN_FILTER_FIFO0;
-  filter_all.FilterBank = 1; // Which filter to use from the assigned ones
+  filter_all.FilterBank = 0; // Which filter to use from the assigned ones
   filter_all.FilterMode = CAN_FILTERMODE_IDMASK;
   filter_all.FilterScale = CAN_FILTERSCALE_32BIT;
   filter_all.FilterActivation = CAN_FILTER_ENABLE;
-  filter_all.SlaveStartFilterBank = 20; // How many filters to assign to CAN1
+  filter_all.SlaveStartFilterBank = 14; // How many filters to assign to CAN1
   	if (HAL_CAN_ConfigFilter(&hcan1, &filter_all) != HAL_OK)
   	{
   	  Error_Handler();
@@ -1290,39 +1421,45 @@ static void MX_CAN1_Init(void)
 	sf_fifo0.FilterIdLow = DRIVEMOTOR_FIFO0_RX_FILTER_ID_LOW;
 
 	// Which bits to compare for filter
-	sf_fifo0.FilterMaskIdHigh = DRIVEMOTOR_FIFO0_RX_FILTER_MASK_HIGH;
-	sf_fifo0.FilterMaskIdLow = DRIVEMOTOR_FIFO0_RX_FILTER_MASK_LOW;
+	sf_fifo0.FilterMaskIdHigh = 0x0000;
+	sf_fifo0.FilterMaskIdLow = (DRIVEMOTOR_FIFO0_RX_FILTER_MASK_LOW & 0x07FF);
 
 	sf_fifo0.FilterFIFOAssignment = CAN_FILTER_FIFO0;
-	sf_fifo0.FilterBank = 2; // Which filter to use from the assigned ones
+	sf_fifo0.FilterBank = 0; // Which filter to use from the assigned ones
 	sf_fifo0.FilterMode = CAN_FILTERMODE_IDMASK;
 	sf_fifo0.FilterScale = CAN_FILTERSCALE_32BIT;
 	sf_fifo0.FilterActivation = CAN_FILTER_ENABLE;
-	sf_fifo0.SlaveStartFilterBank = 20; // How many filters to assign to CAN1
+	sf_fifo0.SlaveStartFilterBank = 14; // How many filters to assign to CAN1
 	if (HAL_CAN_ConfigFilter(&hcan1, &sf_fifo0) != HAL_OK)
 	{
 	  Error_Handler();
 	}
 
+
 	CAN_FilterTypeDef sf_fifo1;
 	// All common bits go into the ID register
+	//sf_fifo1.FilterIdHigh = 0x0000;
+	//sf_fifo1.FilterIdLow = 0x0000;
+	//sf_fifo1.FilterMaskIdHigh = 0x0000;
+	//sf_fifo1.FilterMaskIdLow = 0x0000;
 	sf_fifo1.FilterIdHigh = DRIVEMOTOR_FIFO1_RX_FILTER_ID_HIGH;
 	sf_fifo1.FilterIdLow = DRIVEMOTOR_FIFO1_RX_FILTER_ID_LOW;
 
 	// Which bits to compare for filter
-	sf_fifo1.FilterMaskIdHigh = DRIVEMOTOR_FIFO1_RX_FILTER_MASK_HIGH;
-	sf_fifo1.FilterMaskIdLow = DRIVEMOTOR_FIFO1_RX_FILTER_MASK_LOW;
+	sf_fifo1.FilterMaskIdHigh = 0x0000;
+	sf_fifo1.FilterMaskIdLow = (DRIVEMOTOR_FIFO1_RX_FILTER_MASK_LOW & 0x7FF);
 
 	sf_fifo1.FilterFIFOAssignment = CAN_FILTER_FIFO1;
-	sf_fifo1.FilterBank = 3; // Which filter to use from the assigned ones
+	sf_fifo1.FilterBank = 1; // Which filter to use from the assigned ones
 	sf_fifo1.FilterMode = CAN_FILTERMODE_IDMASK;
 	sf_fifo1.FilterScale = CAN_FILTERSCALE_32BIT;
 	sf_fifo1.FilterActivation = CAN_FILTER_ENABLE;
-	sf_fifo1.SlaveStartFilterBank = 20; // How many filters to assign to CAN1
+	sf_fifo1.SlaveStartFilterBank = 14; // How many filters to assign to CAN1
 	if (HAL_CAN_ConfigFilter(&hcan1, &sf_fifo1) != HAL_OK)
 	{
 	  Error_Handler();
 	}
+
 
 
 
@@ -1334,51 +1471,20 @@ static void MX_CAN1_Init(void)
 	{
 		Error_Handler();
 	}
+	if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING | CAN_IT_RX_FIFO1_MSG_PENDING) != HAL_OK)
+	{
+		Error_Handler();
+	}
+	/*
 	if (HAL_CAN_ActivateNotification(&hcan1,
 			(CAN_IT_RX_FIFO0_MSG_PENDING | CAN_IT_RX_FIFO1_MSG_PENDING | CAN_IT_RX_FIFO0_FULL | CAN_IT_RX_FIFO0_OVERRUN |
 			 CAN_IT_RX_FIFO1_FULL | CAN_IT_RX_FIFO1_OVERRUN)) != HAL_OK)
 	{
 		Error_Handler();
 	}
+	*/
 
   /* USER CODE END CAN1_Init 2 */
-
-}
-
-/**
-  * @brief CAN2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_CAN2_Init(void)
-{
-
-  /* USER CODE BEGIN CAN2_Init 0 */
-
-  /* USER CODE END CAN2_Init 0 */
-
-  /* USER CODE BEGIN CAN2_Init 1 */
-
-  /* USER CODE END CAN2_Init 1 */
-  hcan2.Instance = CAN2;
-  hcan2.Init.Prescaler = 16;
-  hcan2.Init.Mode = CAN_MODE_NORMAL;
-  hcan2.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan2.Init.TimeSeg1 = CAN_BS1_1TQ;
-  hcan2.Init.TimeSeg2 = CAN_BS2_1TQ;
-  hcan2.Init.TimeTriggeredMode = DISABLE;
-  hcan2.Init.AutoBusOff = DISABLE;
-  hcan2.Init.AutoWakeUp = DISABLE;
-  hcan2.Init.AutoRetransmission = DISABLE;
-  hcan2.Init.ReceiveFifoLocked = DISABLE;
-  hcan2.Init.TransmitFifoPriority = DISABLE;
-  if (HAL_CAN_Init(&hcan2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN CAN2_Init 2 */
-
-  /* USER CODE END CAN2_Init 2 */
 
 }
 
@@ -1814,6 +1920,44 @@ static void MX_TIM6_Init(void)
 }
 
 /**
+  * @brief TIM7 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM7_Init(void)
+{
+
+  /* USER CODE BEGIN TIM7_Init 0 */
+
+  /* USER CODE END TIM7_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM7_Init 1 */
+
+  /* USER CODE END TIM7_Init 1 */
+  htim7.Instance = TIM7;
+  htim7.Init.Prescaler = 480;
+  htim7.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim7.Init.Period = 10000;
+  htim7.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim7) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim7, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM7_Init 2 */
+
+  /* USER CODE END TIM7_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -1906,7 +2050,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pins : PB2_Pin PB1_Pin */
   GPIO_InitStruct.Pin = PB2_Pin|PB1_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
@@ -1930,18 +2074,22 @@ static void MX_GPIO_Init(void)
 // EXTI Line External Interrupt ISR Handler CallBack
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    if(GPIO_Pin == GPIO_PIN_9) // PushButton 2
+    if(GPIO_Pin == GPIO_PIN_9) // PushButton 1
     {
     	//HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);
+    	pb1_value = 1;
+    	pb1_update = 1;
     }
 
     // DISABLED DISABLED DISABLED
-    /*
-    else if (GPIO_Pin == GPIO_PIN_8) // PushButton 1
+
+    else if (GPIO_Pin == GPIO_PIN_8) // PushButton 2
     {
     	//HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
+    	pb2_value = 1;
+    	pb2_update = 1;
     }
-    */
+
 }
 
 /* USER CODE END 4 */

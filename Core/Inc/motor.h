@@ -119,11 +119,14 @@ typedef struct
 	STATUS_REG status_reg;
 } DRV8711_REGS;
 
-enum MOTOR_DIRECTION
+typedef enum
 {
-	DIR_FORWARD = 0,
-	DIR_BACKWARD
-};
+	DIR_STOP = 0,
+	DIR_LEFT,
+	DIR_RIGHT,
+
+	DIR_INVALID
+} MOTOR_DIRECTION;
 
 enum DRIVE_STATUS
 {
@@ -146,6 +149,7 @@ void EnableDrive(DRIVE_MOTOR drive_index);
 void DisableDrive(DRIVE_MOTOR drive_index);
 
 void ResetDrive(DRIVE_MOTOR drive_index);
+void ResetStatusRegisters(DRIVE_MOTOR drive_index);
 
 void DriveSleep(DRIVE_MOTOR drive_index);
 void DriveWakeUp(DRIVE_MOTOR drive_index);

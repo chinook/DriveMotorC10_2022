@@ -64,6 +64,7 @@ typedef enum
 
 extern uint8_t b_timer500ms_flag;
 extern uint8_t b_timer50ms_flag;
+extern uint8_t b_timer250ms_flag;
 
 extern uint8_t can1_recv_flag;
 
