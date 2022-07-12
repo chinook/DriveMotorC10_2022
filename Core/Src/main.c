@@ -568,7 +568,7 @@ uint32_t DoStatePitchControl()
 	if (motors.pitch_motor.enabled)
 	{
 		// Only try to turn the motor if the pitch drive is enabled
-		if (motors.pitch_motor.mode == MODE_MANUAL)
+		if ((motors.pitch_motor.mode == MODE_MANUAL) && (!b_rops))
 		{
 			// Check if manual command was set
 			if (motors.pitch_motor.manual_command)
@@ -725,6 +725,9 @@ uint32_t DoStateCAN()
 		TransmitCAN(DRIVEMOTOR_MAST_FAULT_STALL, (uint8_t*)&can_tx_data.mast_motor_fault_stall, 4, 0);
 		delay_us(50);
 
+		TransmitCAN(DRIVEMOTOR_ROPS_FEEDBACK, (uint8_t*)&b_rops, 4, 0);
+		delay_us(50);
+
 	}
 
 	// return STATE_PITCH_CONTROL;
@@ -735,6 +738,36 @@ uint32_t DoStateROPS()
 {
 	while (b_rops)
 	{
+		delay_us(10);
+
+		// Check timers
+		if (b_timer500ms_flag)
+		{
+			b_timer500ms_flag = 0;
+			HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);
+		}
+		if (b_timer50ms_flag)
+		{
+			b_timer50ms_flag = 0;
+
+			// flag_can_tx_send = 1;
+		}
+		if (b_timer250ms_flag)
+		{
+			b_timer250ms_flag = 0;
+
+			flag_can_tx_send = 1;
+		}
+
+		// Safety check, if we have a command from MARIO, make sure drive is enabled
+		if (motors.pitch_motor.auto_command && !motors.pitch_motor.enabled)
+			motors.pitch_motor.request_enable = 1;
+		motors.pitch_motor.mode = MODE_AUTOMATIC;
+
+		DoStateAssessPushButtons();
+		DoStatePitchControl();
+		DoStateMastControl();
+		DoStateCAN();
 	}
 
 	return STATE_PITCH_CONTROL;
@@ -930,11 +963,6 @@ void ProcessCanMessage()
 	//
 	// ROPS + Error commands
 	//
-	else if (pRxHeader.StdId == MARIO_ROPS_CMD)
-	{
-		b_rops = 1;
-		motors.pitch_motor.request_enable = 1;
-	}
 	else if (pRxHeader.StdId == MARIO_PITCH_EMERGENCY_STOP)
 	{
 		b_emergency_stop = 1;
@@ -953,11 +981,26 @@ void ProcessCanMessage()
 
 		DoStateInit();
 	}
+	else if (pRxHeader.StdId == MARIO_ROPS_CMD)
+	{
+		uint8_t rops_data = (can_data & 0xFF);
+		if (rops_data == ROPS_ENABLE)
+			b_rops = 1;
+		else if (rops_data == ROPS_DISABLE)
+			b_rops = 0;
+		else
+		{
+			// Unknown value for ROPS command, assume cmd was to activate ROPS
+			b_rops = 1;
+		}
+	}
+	/*
 	else if (pRxHeader.StdId == VOLANT_MANUAL_ROPS_CMD)
 	{
 		b_rops = 1;
 		motors.pitch_motor.request_enable = 1;
 	}
+	*/
 	//
 	// Mario Sensor data
 	//
