@@ -94,6 +94,9 @@ uint8_t b_timer250ms_flag = 0;
 
 uint8_t flag_can_tx_send = 0;
 
+uint8_t flag_send_drive_pitch_config = 0;
+uint8_t flag_send_drive_mast_config = 0;
+
 
 uint8_t txData[8];
 uint8_t rxData[8];
@@ -251,6 +254,9 @@ void ExecuteStateMachine()
 		b_timer250ms_flag = 0;
 
 		flag_can_tx_send = 1;
+
+		flag_send_drive_pitch_config = 1;
+		flag_send_drive_mast_config = 1;
 	}
 
 	// Check for ROPS or emergency stop flags
@@ -316,6 +322,9 @@ uint32_t DoStateInit()
 
 	can1_recv_flag = 0;
 	flag_can_tx_send = 0;
+
+	flag_send_drive_pitch_config = 0;
+	flag_send_drive_mast_config = 0;
 
 	memset(&can_tx_data, 0, sizeof(CAN_TX_Data));
 
@@ -559,6 +568,14 @@ uint8_t CheckChangeDirectionMotor(DRIVE_MOTOR motor)
 
 uint32_t DoStatePitchControl()
 {
+	// Periodically re-send the config registers to make sure drive has correct values
+	if (flag_send_drive_pitch_config)
+	{
+		flag_send_drive_pitch_config = 0;
+
+		SendConfigRegisters(DRIVE_PITCH);
+	}
+
 	// Check if requested disable of drive
 	CheckEnableDisableMotor(DRIVE_PITCH);
 
@@ -618,6 +635,14 @@ uint32_t DoStatePitchControl()
 
 uint32_t DoStateMastControl()
 {
+	// Periodically re-send the config registers to make sure drive has correct values
+	if (flag_send_drive_mast_config)
+	{
+		flag_send_drive_mast_config = 0;
+
+		SendConfigRegisters(DRIVE_MAST);
+	}
+
 	// Check if requested disable of drive
 	uint8_t enableChanged = CheckEnableDisableMotor(DRIVE_MAST);
 	if (enableChanged)
@@ -1084,6 +1109,12 @@ HAL_StatusTypeDef TransmitCAN(uint32_t id, uint8_t* buf, uint8_t size, uint8_t w
 		// for (int j = 0; j < 500; ++j) {}
 		delay_us(50);
 	}
+	if (!found_mailbox)
+	{
+		// TODO: (Marc) Should really be the error led once it's been soldered
+		HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
+	}
+
 	if (with_priority)
 	{
 		// If message is important, make sure no other messages are queud to ensure it will be sent after any other

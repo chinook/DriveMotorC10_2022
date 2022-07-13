@@ -73,6 +73,10 @@ extern CAN_RxHeaderTypeDef pRxHeader;
 
 extern uint32_t txMailbox;
 
+
+void delay_us(uint16_t delay16_us);
+void delay_ms(uint16_t delay16_ms);
+
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

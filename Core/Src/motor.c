@@ -159,6 +159,7 @@ void TransmitMotorSPI(DRIVE_MOTOR drive_index, uint8_t reg)
 	uint8_t ret = HAL_SPI_Transmit(hspi, tx_data, 2, HAL_MAX_DELAY);
 	if (ret != HAL_OK)
 	{
+		// TODO: (Marc) Should really be the error led once it's soldered
 		HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
 	}
 	for (int i = 0; i < 1000; ++i) {}
@@ -430,7 +431,20 @@ void ResetStatusRegisters(DRIVE_MOTOR drive_index)
 
 	// drive_regs[drive_index].status_reg = {0};
 	memset(&drive_regs[drive_index].status_reg, 0, sizeof(STATUS_REG));
+	TransmitMotorSPI(drive_index, DRV8711_STATUS_REG);
+
+	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+}
+
+void SendConfigRegisters(DRIVE_MOTOR drive_index)
+{
+	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+								  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+
 	TransmitMotorSPI(drive_index, DRV8711_CTRL_REG);
+	delay_us(50);
+	TransmitMotorSPI(drive_index, DRV8711_OFF_REG);
 
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
 					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);

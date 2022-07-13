@@ -151,6 +151,8 @@ void DisableDrive(DRIVE_MOTOR drive_index);
 void ResetDrive(DRIVE_MOTOR drive_index);
 void ResetStatusRegisters(DRIVE_MOTOR drive_index);
 
+void SendConfigRegisters(DRIVE_MOTOR drive_index);
+
 void DriveSleep(DRIVE_MOTOR drive_index);
 void DriveWakeUp(DRIVE_MOTOR drive_index);
 uint32_t IsDriveAwake(DRIVE_MOTOR drive_index);
