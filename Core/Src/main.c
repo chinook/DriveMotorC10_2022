@@ -383,8 +383,8 @@ uint32_t DoStateInit()
 
 uint32_t DoStateAssessPushButtons()
 {
-	// static uint32_t motor = DRIVE_MAST;
-	static uint32_t motor = DRIVE_PITCH;
+	static uint32_t motor = DRIVE_MAST;
+	//static uint32_t motor = DRIVE_PITCH;
 
 	static uint8_t is_driving = 0;
 
@@ -731,6 +731,7 @@ uint32_t DoStateCAN()
 		//TransmitCAN(DRIVEMOTOR_MAST_BEMF, (uint8_t*)&can_tx_data.mast_motor_bemf, 4, 0);
 		//delay_us(50);
 
+		/*
 		uint32_t pitch_mode = can_tx_data.pitch_motor_mode_feedback;
 		uint32_t pitch_mode_msg = ((pitch_mode == MODE_MANUAL) ? MOTOR_MODE_MANUAL : MOTOR_MODE_AUTOMATIC);
 		TransmitCAN(DRIVEMOTOR_PITCH_MODE_FEEDBACK, (uint8_t*)&pitch_mode_msg, 4, 0);
@@ -740,6 +741,7 @@ uint32_t DoStateCAN()
 		uint32_t mast_mode_msg = ((mast_mode == MODE_MANUAL) ? MOTOR_MODE_MANUAL : MOTOR_MODE_AUTOMATIC);
 		TransmitCAN(DRIVEMOTOR_MAST_MODE_FEEDBACK, (uint8_t*)&mast_mode_msg, 4, 0);
 		delay_us(50);
+		*/
 
 		TransmitCAN(DRIVEMOTOR_PITCH_DONE, (uint8_t*)&can_tx_data.pitch_done, 4, 0);
 		delay_us(50);
@@ -838,6 +840,17 @@ void SetMotorMode(DRIVE_MOTOR motor, uint32_t can_value)
 		motor_mode = MODE_MANUAL;
 	else if (can_rx == MOTOR_MODE_AUTOMATIC)
 		motor_mode = MODE_AUTOMATIC;
+	else if (can_rx == MOTOR_MODE_TOGGLE)
+	{
+		uint32_t prev_motor_mode = ((motor == DRIVE_PITCH) ? motors.pitch_motor.mode : motors.mast_motor.mode);
+		if (prev_motor_mode == MODE_MANUAL)
+			motor_mode = MODE_AUTOMATIC;
+		else if (prev_motor_mode == MODE_AUTOMATIC)
+			motor_mode = MODE_MANUAL;
+		else
+			motor_mode = MODE_MANUAL;
+
+	}
 	else
 		return; // Do not set motor mode if mode value from CAN is invalid
 
@@ -930,20 +943,7 @@ void ProcessCanMessage()
 	}
 	else if (pRxHeader.StdId == VOLANT_MANUAL_MAST_CMD)
 	{
-		memcpy(bytesToType.bytes, rxData, 4);
-		int32_t cmd_val = bytesToType.int_val;
-
-		// Get the direction of turn from the sign of the value
-		if (cmd_val == 0)
-			motors.mast_motor.manual_direction = DIR_STOP;
-		else if (cmd_val > 0)
-			motors.mast_motor.manual_direction = DIR_LEFT;
-		else
-			motors.mast_motor.manual_direction = DIR_RIGHT;
-
-		if (motors.mast_motor.mode == MODE_MANUAL)
-			motors.mast_motor.request_enable = 1;
-		motors.mast_motor.manual_command = 1;
+		SetMotorManualCommand(DRIVE_MAST, can_data);
 	}
 	//
 	// MARIO Automatic motor commands

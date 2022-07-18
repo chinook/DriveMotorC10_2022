@@ -16,6 +16,7 @@
 // Motor modes
 #define MOTOR_MODE_MANUAL 0x1
 #define MOTOR_MODE_AUTOMATIC 0x2
+#define MOTOR_MODE_TOGGLE 0x10
 
 // Emergency commands
 #define MOTOR_EMERGENCY_STOP_DISABLE 0x1
@@ -113,6 +114,8 @@
 #define MARIO_PITCH_MODE_FEEDBACK 0x4C
 #define MARIO_MAST_MODE_FEEDBACK 0x4D
 #define MARIO_ROPS_FEEDBACK 0x4E
+
+#define MARIO_TIP_SPEED_RATIO 0x4F
 
 // Volant FIFO0 - Priority
 
