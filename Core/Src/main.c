@@ -731,7 +731,7 @@ uint32_t DoStateCAN()
 		//TransmitCAN(DRIVEMOTOR_MAST_BEMF, (uint8_t*)&can_tx_data.mast_motor_bemf, 4, 0);
 		//delay_us(50);
 
-		/*
+
 		uint32_t pitch_mode = can_tx_data.pitch_motor_mode_feedback;
 		uint32_t pitch_mode_msg = ((pitch_mode == MODE_MANUAL) ? MOTOR_MODE_MANUAL : MOTOR_MODE_AUTOMATIC);
 		TransmitCAN(DRIVEMOTOR_PITCH_MODE_FEEDBACK, (uint8_t*)&pitch_mode_msg, 4, 0);
@@ -741,7 +741,7 @@ uint32_t DoStateCAN()
 		uint32_t mast_mode_msg = ((mast_mode == MODE_MANUAL) ? MOTOR_MODE_MANUAL : MOTOR_MODE_AUTOMATIC);
 		TransmitCAN(DRIVEMOTOR_MAST_MODE_FEEDBACK, (uint8_t*)&mast_mode_msg, 4, 0);
 		delay_us(50);
-		*/
+
 
 		TransmitCAN(DRIVEMOTOR_PITCH_DONE, (uint8_t*)&can_tx_data.pitch_done, 4, 0);
 		delay_us(50);
@@ -1032,6 +1032,10 @@ void ProcessCanMessage()
 	else if (pRxHeader.StdId == MARIO_MOTOR_ROTOR_RPM)
 	{
 		// TODO: (Marc) Auto ROPS based on value of rotor RPM ?
+	}
+	else if (pRxHeader.StdId == BACKPLANE_DUMMY_TRAFFIC)
+	{
+		// NOP  Only dummy traffic for other boards to exit BOFF
 	}
 	else
 	{
