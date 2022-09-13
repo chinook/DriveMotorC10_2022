@@ -378,13 +378,17 @@ uint32_t DoStateInit()
 	delay_us(10);
 	DisableDrive(DRIVE_MAST);
 
+	delay_us(10);
+	ResetStatusRegisters(DRIVE_PITCH);
+	delay_us(10);
+
 	return STATE_ASSESS_PUSH_BUTTONS;
 }
 
 uint32_t DoStateAssessPushButtons()
 {
-	static uint32_t motor = DRIVE_MAST;
-	//static uint32_t motor = DRIVE_PITCH;
+	//static uint32_t motor = DRIVE_MAST;
+	static uint32_t motor = DRIVE_PITCH;
 
 	static uint8_t is_driving = 0;
 
@@ -591,6 +595,8 @@ uint32_t DoStatePitchControl()
 			if (motors.pitch_motor.manual_command)
 			{
 				Step(DRIVE_PITCH);
+				//delay_us(800);
+				delay_ms(2);
 				for (int i = 0; i < 400; ++i);
 			}
 		}
@@ -600,7 +606,8 @@ uint32_t DoStatePitchControl()
 			if (motors.pitch_motor.auto_command)
 			{
 				Step(DRIVE_PITCH);
-				for (int i = 0; i < 400; ++i);
+				// delay_ms(2);
+				for (int i = 0; i < 800; ++i);
 
 				// Decrease number of steps to do
 				--motors.pitch_motor.auto_command;
@@ -734,18 +741,22 @@ uint32_t DoStateCAN()
 
 		uint32_t pitch_mode = can_tx_data.pitch_motor_mode_feedback;
 		uint32_t pitch_mode_msg = ((pitch_mode == MODE_MANUAL) ? MOTOR_MODE_MANUAL : MOTOR_MODE_AUTOMATIC);
+		// 0x11
 		TransmitCAN(DRIVEMOTOR_PITCH_MODE_FEEDBACK, (uint8_t*)&pitch_mode_msg, 4, 0);
 		delay_us(50);
 
 		uint32_t mast_mode = can_tx_data.mast_motor_mode_feedback;
 		uint32_t mast_mode_msg = ((mast_mode == MODE_MANUAL) ? MOTOR_MODE_MANUAL : MOTOR_MODE_AUTOMATIC);
+		// 0x12
 		TransmitCAN(DRIVEMOTOR_MAST_MODE_FEEDBACK, (uint8_t*)&mast_mode_msg, 4, 0);
 		delay_us(50);
 
 
+		// 0x13
 		TransmitCAN(DRIVEMOTOR_PITCH_DONE, (uint8_t*)&can_tx_data.pitch_done, 4, 0);
 		delay_us(50);
 
+		/*
 		TransmitCAN(DRIVEMOTOR_PITCH_FAULT_STALL, (uint8_t*)&can_tx_data.pitch_motor_fault_stall, 4, 0);
 		delay_us(50);
 
@@ -754,6 +765,7 @@ uint32_t DoStateCAN()
 
 		TransmitCAN(DRIVEMOTOR_ROPS_FEEDBACK, (uint8_t*)&b_rops, 4, 0);
 		delay_us(50);
+		*/
 
 	}
 
@@ -1033,9 +1045,17 @@ void ProcessCanMessage()
 	{
 		// TODO: (Marc) Auto ROPS based on value of rotor RPM ?
 	}
-	else if (pRxHeader.StdId == BACKPLANE_DUMMY_TRAFFIC)
-	{
+	// else if (pRxHeader.StdId == BACKPLANE_DUMMY_TRAFFIC)
+	//{
 		// NOP  Only dummy traffic for other boards to exit BOFF
+	// }
+	else if (pRxHeader.StdId == BACKPLANE_DUMMY_TRAFFIC_DRIVE)
+	{
+
+	}
+	else if (pRxHeader.StdId == VOLANT_DUMMY_TRAFFIC_DRIVE)
+	{
+		// Dummy traffic from volant
 	}
 	else
 	{
@@ -1138,7 +1158,6 @@ HAL_StatusTypeDef TransmitCAN(uint32_t id, uint8_t* buf, uint8_t size, uint8_t w
 	HAL_StatusTypeDef ret = HAL_CAN_AddTxMessage(&hcan1, &pTxHeader, buf, &mb);
 	if (ret != HAL_OK)
 	{
- 		HAL_GPIO_WritePin(LED_ERROR_GPIO_Port, LED_ERROR_Pin, GPIO_PIN_SET);
 		return ret;
 	}
 

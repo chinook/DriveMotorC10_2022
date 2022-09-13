@@ -323,8 +323,8 @@ void InitRegValues2(DRIVE_MOTOR drive_index)
 	//drive_regs[drive_index].ctrl_reg.mode = 0b0010;	// 1/4 step
 	if (drive_index == DRIVE_PITCH)
 	{
-		drive_regs[drive_index].ctrl_reg.mode = 0b0010;	// 1/4 step
-		//drive_regs[drive_index].ctrl_reg.mode = 0b0001;	// 1/2 step
+		//drive_regs[drive_index].ctrl_reg.mode = 0b0010;	// 1/4 step
+		drive_regs[drive_index].ctrl_reg.mode = 0b0001;	// 1/2 step
 		//drive_regs[drive_index].ctrl_reg.mode = 0b0000;	// Full step
 	}
 	else
@@ -512,10 +512,12 @@ void Step(DRIVE_MOTOR drive_index)
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
 					  drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_SET);
 	//HAL_Delay(5);
+	// for (int i = 0; i < 400; ++i) {}
 	for (int i = 0; i < 90; ++i) {}
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
 					  drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_RESET);
 	//HAL_Delay(5);
+	// for (int i = 0; i < 400; ++i) {}
 	for (int i = 0; i < 90; ++i) {}
 }
 
