@@ -230,9 +230,9 @@ void InitRegValues(DRIVE_MOTOR drive_index)
 	drive_regs[drive_index].ctrl_reg.enbl = 0;	// Disable motor drive by default
 	drive_regs[drive_index].ctrl_reg.rdir = 0;	// Direction set by DIR pin
 	drive_regs[drive_index].ctrl_reg.rstep = 0;	// No automatic stepping
-	drive_regs[drive_index].ctrl_reg.mode = 0b0010;	// 1/4 step
+	//drive_regs[drive_index].ctrl_reg.mode = 0b0010;	// 1/4 step
 	//drive_regs[drive_index].ctrl_reg.mode = 0b0001;	// 1/2 step
-	//drive_regs[drive_index].ctrl_reg.mode = 0b0000;	// Full step
+	drive_regs[drive_index].ctrl_reg.mode = 0b0000;	// Full step
 	drive_regs[drive_index].ctrl_reg.extstall = 0;	// Internal stall detect
 	drive_regs[drive_index].ctrl_reg.isgain = 0b00;	// Gain of 5
 	drive_regs[drive_index].ctrl_reg.dtime = 0b11;	// Dead-time of 850ns

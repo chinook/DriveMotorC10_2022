@@ -607,7 +607,7 @@ uint32_t DoStatePitchControl()
 			{
 				Step(DRIVE_PITCH);
 				// delay_ms(2);
-				for (int i = 0; i < 800; ++i);
+				for (int i = 0; i < 2000; ++i);
 
 				// Decrease number of steps to do
 				--motors.pitch_motor.auto_command;
@@ -1470,7 +1470,7 @@ static void MX_CAN1_Init(void)
   hcan1.Init.TimeTriggeredMode = DISABLE;
   hcan1.Init.AutoBusOff = DISABLE;
   hcan1.Init.AutoWakeUp = DISABLE;
-  hcan1.Init.AutoRetransmission = ENABLE;
+  hcan1.Init.AutoRetransmission = DISABLE;
   hcan1.Init.ReceiveFifoLocked = DISABLE;
   hcan1.Init.TransmitFifoPriority = DISABLE;
   if (HAL_CAN_Init(&hcan1) != HAL_OK)
