@@ -387,8 +387,10 @@ uint32_t DoStateInit()
 
 uint32_t DoStateAssessPushButtons()
 {
+	return STATE_PITCH_CONTROL;
+
 	static uint32_t motor = DRIVE_MAST;
-	// static uint32_t motor = DRIVE_PITCH;
+	//static uint32_t motor = DRIVE_PITCH;
 
 	static uint8_t is_driving = 0;
 
