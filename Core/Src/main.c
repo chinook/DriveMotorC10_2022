@@ -505,7 +505,7 @@ uint8_t CheckEnableDisableMotor(DRIVE_MOTOR motor)
 	if (motors.motors[motor].request_disable)
 	{
 		DisableDrive(motor);
-		delay_us(20);
+		//delay_us(20);
 
 		// On disable, we reset the commands
 		motors.motors[motor].manual_command = 0;
@@ -525,7 +525,7 @@ uint8_t CheckEnableDisableMotor(DRIVE_MOTOR motor)
 	else if (motors.motors[motor].request_enable)
 	{
 		EnableDrive(motor);
-		delay_us(20);
+		//delay_us(20);
 
 		motors.motors[motor].request_enable = 0;
 
@@ -548,7 +548,7 @@ uint8_t CheckChangeDirectionMotor(DRIVE_MOTOR motor)
 		if (motors.motors[motor].manual_direction != motors.motors[motor].prev_manual_direction)
 		{
 			SetDirection(motor, motors.motors[motor].manual_direction);
-			delay_us(20);
+			//delay_us(20);
 
 			motors.motors[motor].prev_manual_direction = motors.motors[motor].manual_direction;
 
@@ -561,7 +561,7 @@ uint8_t CheckChangeDirectionMotor(DRIVE_MOTOR motor)
 		if (motors.motors[motor].auto_direction != motors.motors[motor].prev_auto_direction)
 		{
 			SetDirection(motor, motors.motors[motor].auto_direction);
-			delay_us(20);
+			//delay_us(20);
 
 			motors.motors[motor].prev_auto_direction = motors.motors[motor].auto_direction;
 
@@ -598,7 +598,7 @@ uint32_t DoStatePitchControl()
 			{
 				Step(DRIVE_PITCH);
 				//delay_us(800);
-				delay_ms(2);
+				//delay_ms(2);
 				for (int i = 0; i < 400; ++i);
 			}
 		}
@@ -660,7 +660,7 @@ uint32_t DoStateMastControl()
 		if (motors.mast_motor.enabled == 0)
 		{
 			DriveMastStop();
-			delay_us(20);
+			//delay_us(20);
 		}
 	}
 
@@ -673,19 +673,19 @@ uint32_t DoStateMastControl()
 			(motors.mast_motor.mode == MODE_AUTOMATIC && motors.mast_motor.auto_direction == DIR_STOP))
 		{
 			DriveMastStop();
-			delay_us(20);
+			//delay_us(20);
 		}
 		else if ((motors.mast_motor.mode == MODE_MANUAL && motors.mast_motor.manual_direction == DIR_LEFT) ||
 				 (motors.mast_motor.mode == MODE_AUTOMATIC && motors.mast_motor.auto_direction == DIR_LEFT))
 		{
 			DriveMastLeft();
-			delay_us(20);
+			//delay_us(20);
 		}
 		else if ((motors.mast_motor.mode == MODE_MANUAL && motors.mast_motor.manual_direction == DIR_RIGHT) ||
 				 (motors.mast_motor.mode == MODE_AUTOMATIC && motors.mast_motor.auto_direction == DIR_RIGHT))
 		{
 			DriveMastRight();
-			delay_us(20);
+			//delay_us(20);
 		}
 	}
 
@@ -1232,7 +1232,7 @@ int main(void)
 	  ExecuteStateMachine();
 
 	  // Make sure State machine is not using 100% of cpu
-	  delay_us(50);
+	  //delay_us(50);
   }
 
 

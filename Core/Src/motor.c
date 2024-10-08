@@ -443,7 +443,7 @@ void SendConfigRegisters(DRIVE_MOTOR drive_index)
 								  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
 
 	TransmitMotorSPI(drive_index, DRV8711_CTRL_REG);
-	delay_us(50);
+	//delay_us(50);
 	TransmitMotorSPI(drive_index, DRV8711_OFF_REG);
 
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
