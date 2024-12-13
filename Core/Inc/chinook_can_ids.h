@@ -1,193 +1,124 @@
 /*
  * chinook_can_ids.h
  *
- *  Created on: May 24, 2022
- *      Author: Marc
+ *  Created on May 24 2022 by Marc
+ *
+ *  Updated on A2024 by Thomas Maitre
+ *  CAN IDs for 4 PCBs : backplane, mario, drivemotor, volantV2
  */
 
 #ifndef INC_CHINOOK_CAN_IDS_H_
 #define INC_CHINOOK_CAN_IDS_H_
 
+//
+// CONSTANTS, COMMANDS, STATES and VALUES shared by boards
+// 0x?0 -> ? = group
+// Emergency = 0x0X
+// Mario = 0x1X
+// Drive motor = 0x2X
+// Volant CMD = 0x3X
+// Mario to Volant infos = 0x4X
 
-//
-// Command values shared by boards
-//
+
+// Emergency 0x0X
+#define CAN_ID_CMD_MARIO_ROPS  0x00	 //CMD
+#define CAN_ID_CMD_VOLANT_MANUAL_ROPS 0x01	 //CMD
+	#define ROPS_DISABLE 0 				//CONST
+	#define ROPS_ENABLE 1 				//CONST
+#define CAN_ID_STATE_DRIVEMOTOR_ROPS  0x02 	//STATE for mario
+	#define ROPS_OFF 0	 				//CONST
+	#define ROPS_IN_PROGRESS 2 			//CONST
+	#define ROPS_DONE 4 				//CONST
+	#define ROPS_MOTOR_STALL 8 			//CONST
+
 
 // Motor modes
-#define MOTOR_MODE_MANUAL 0x1
-#define MOTOR_MODE_AUTOMATIC 0x2
-#define MOTOR_MODE_TOGGLE 0x10
-
-// Emergency commands
-#define MOTOR_EMERGENCY_STOP_DISABLE 0x1
-#define MOTOR_EMERGENCY_STOP_ENABLE 0x200
-#define DRIVE_MOTOR_RESET_CMD 0x1
-#define ROPS_DISABLE 0x1
-#define ROPS_ENABLE 0x20
+#define CAN_ID_CMD_MARIO_PITCH_MODE  0x11		//CMD mario to drive motor
+#define CAN_ID_CMD_MARIO_MAST_MODE	 0x12 		//CMD mario to drive motor
+#define CAN_ID_STATE_DRIVEMOTOR_PITCH_MODE 0x21 //VALUE for mario
+#define CAN_ID_STATE_DRIVEMOTOR_MAST_MODE  0x22 //VALUE for mario
+	#define MOTOR_MODE_MANUAL 0 		//CONST
+	#define MOTOR_MODE_AUTOMATIC 2		//CONST
 
 // Manual motor control
-#define MOTOR_DIRECTION_STOP 0x100
-#define MOTOR_DIRECTION_LEFT 0x200
-#define MOTOR_DIRECTION_RIGHT 0x300
+#define CAN_ID_CMD_MARIO_PITCH_DIRECTION  0x13	//CMD mario to drive motor
+#define CAN_ID_CMD_MARIO_MAST_DIRECTION	  0x14 	//CMD mario to drive motor
+	#define MOTOR_DIRECTION_LEFT  0		//CONST
+	#define MOTOR_DIRECTION_STOP  2		//CONST
+	#define MOTOR_DIRECTION_RIGHT 4		//CONST
+#define CAN_ID_DRIVEMOTOR_PITCH_MOVE_DONE 0x23 	//need to be removed
 
-// Acquisition control command values
-#define SD_CARD_ACQ_DISABLE 0x1
-#define SD_CARD_ACQ_ENABLE 0x200
+// motor SPEED in % -100 to 100
+#define CAN_ID_CMD_MARIO_PITCH_SPEED  0x15	//CMD mario to drive motor
+#define CAN_ID_CMD_MARIO_MAST_SPEED	  0x16 	//CMD mario to drive motor
 
-// Backplane command values
-#define BACKPLANE_BUZZER_BEEP 0x1
-
-
-
-//
-// Mario RX CAN messages  --  0x00 -> 0x3F
-//
-
-// Mario FIFO0 - Priority
-
-#define VOLANT_SD_CARD_ACQ_CMD 0x01
-
-#define DRIVEMOTOR_PITCH_MODE_FEEDBACK 0x11
-#define DRIVEMOTOR_MAST_MODE_FEEDBACK 0x12
-#define DRIVEMOTOR_PITCH_DONE 0x13
-
-#define DRIVEMOTOR_PITCH_FAULT_STALL 0x14
-#define DRIVEMOTOR_MAST_FAULT_STALL 0x15
-#define DRIVEMOTOR_ROPS_FEEDBACK 0x16
-
-#define VOLANT_MANUAL_ROPS_CMD 0x18
-
-// Mario FIFO1 - Low Priority
-
-#define VOLANT_HEARTBEAT 0x21
-#define BACKPLANE_HEARTBEAT 0x22
-#define DRIVEMOTOR_HEARTBEAT 0x23
-#define DRIVEMOTORC9_HEARTBEAT 0x24
-
-#define DRIVEMOTOR_PITCH_BEMF 0x26
-#define DRIVEMOTOR_MAST_BEMF 0x27
-
-#define BACKPLANE_TOTAL_VOLTAGE 0x31
-#define BACKPLANE_TOTAL_CURRENT 0x32
-#define BACKPLANE_BOARD_VOLTAGES_1 0x33
-#define BACKPLANE_BOARD_VOLTAGES_2 0x34
-#define BACKPLANE_BOARD_CURRENTS_1 0x35
-#define BACKPLANE_BOARD_CURRENTS_2 0x36
-#define BACKPLANE_VOLANT_VOLTAGE 0x37
-#define BACKPLANE_VOLANT_CURRENT 0x38
-#define BACKPLANE_BOARD_SLOTS_HS 0x39
-#define BACKPLANE_VOLANT_STATUS 0x3A
-
-#define BACKPLANE_DUMMY_TRAFFIC_MARIO 0x3B
-
-// Mario FIFO0 - Priority filter
-
-#define MARIO_FIFO0_RX_FILTER_ID_HIGH 0x0000
-#define MARIO_FIFO0_RX_FILTER_ID_LOW  0x0000
-#define MARIO_FIFO0_RX_FILTER_MASK_HIGH 0xFFFF
-#define MARIO_FIFO0_RX_FILTER_MASK_LOW  0xFFE0
-
-// Mario FIFO1 - Low priority filter
-
-#define MARIO_FIFO1_RX_FILTER_ID_HIGH 0x0000
-#define MARIO_FIFO1_RX_FILTER_ID_LOW  0x0020
-#define MARIO_FIFO1_RX_FILTER_MASK_HIGH 0xFFFF
-#define MARIO_FIFO1_RX_FILTER_MASK_LOW  0xFFE0
+// Automatic motor control
+// nothing for now
 
 
-//
-// Volant RX CAN messages  --  0x40 -> 0x5F
-//
+// INFO errors for motors
+#define DRIVEMOTOR_PITCH_FAULT_STALL 0x24 //INFO for mario
+#define DRIVEMOTOR_MAST_FAULT_STALL 0x25 //INFO for mario
+	//CONST TO DO
 
-// Volant FIFO0 - Priority
-
-#define MARIO_PITCH_ANGLE 0x41
-#define MARIO_MAST_ANGLE 0x42
-#define MARIO_ROTOR_RPM 0x43
-#define MARIO_WHEEL_RPM 0x44
-#define MARIO_WIND_DIRECTION 0x45
-#define MARIO_WIND_SPEED 0x46
-#define MARIO_TORQUE 0x47
-#define MARIO_LOADCELL 0x48
-#define MARIO_LIMIT_SWITCH 0x49
-#define MARIO_BATT_VOLTAGE 0x4A
-#define MARIO_BATT_CURRENT 0x4B
-
-#define MARIO_PITCH_MODE_FEEDBACK 0x4C
-#define MARIO_MAST_MODE_FEEDBACK 0x4D
-#define MARIO_ROPS_FEEDBACK 0x4E
-
-#define MARIO_TIP_SPEED_RATIO 0x4F
-
-// Volant FIFO0 - Priority
-
-#define VOLANT_FIFO0_RX_FILTER_ID_HIGH 0x0000
-#define VOLANT_FIFO0_RX_FILTER_ID_LOW  0x0040
-#define VOLANT_FIFO0_RX_FILTER_MASK_HIGH 0xFFFF
-#define VOLANT_FIFO0_RX_FILTER_MASK_LOW  0xFFF0
+// STATUS buttons Volant to Mario IDs 0x3X //one ID in which each bit in the data are a button
+#define CAN_ID_STATUS_BUTTONS 	0x30 //CMD volant to mario
+	#define CAN_STATUS_PRESS 	1					//CONST
+	#define CAN_STATUS_UNPRESS 	0					//CONST
+	#define CAN_BIT_POSITION_BUTTON_HGG 	1		//CONST
+	#define CAN_BIT_POSITION_BUTTON_HG 		2		//CONST
+	#define CAN_BIT_POSITION_BUTTON_HD 		4		//CONST
+	#define CAN_BIT_POSITION_BUTTON_HDD 	8		//CONST
+	#define CAN_BIT_POSITION_BUTTON_MG 		16		//CONST
+	#define CAN_BIT_POSITION_BUTTON_MD 		32		//CONST
+	#define CAN_BIT_POSITION_BUTTON_BGG 	64		//CONST
+	#define CAN_BIT_POSITION_BUTTON_BG 		128		//CONST
+	#define CAN_BIT_POSITION_BUTTON_BD 		256		//CONST
+	#define CAN_BIT_POSITION_BUTTON_BDD 	512		//CONST
 
 
-//
-// Drive motor RX CAN messages  --  0x60 -> 0x7F
-//
+// INFO Mario to Volant IDs 0x4X -> refer in volant files to: TouchGFX_4_23_2_tutorial_after_generating_code_step
+#define CAN_ID_MARIO_VAL_TURB_DIR 			0x40
+#define CAN_ID_MARIO_VAL_TURB_CMD 			0x41
+#define CAN_ID_MARIO_VAL_WIND_DIR 			0x42
+#define CAN_ID_MARIO_VAL_SPEED 				0x43
+#define CAN_ID_MARIO_VAL_TSR 				0x44
+#define CAN_ID_MARIO_VAL_GEAR_RATIO 		0x45
+#define CAN_ID_MARIO_VAL_ROTOR_SPEED 		0x46
+#define CAN_ID_MARIO_VAL_ROTOR_ROPS_CMD 	0x47
+#define CAN_ID_MARIO_VAL_PITCH 				0x48
+#define CAN_ID_MARIO_VAL_EFFICIENCY 		0x49
+#define CAN_ID_MARIO_VAL_WIND_SPEED 		0x4A
+#define CAN_ID_MARIO_VAL_PITCH_CMD 			0x4B
+#define CAN_ID_MARIO_VAL_DEBUG_LOG_1 		0x4C
+#define CAN_ID_MARIO_VAL_DEBUG_LOG_2 		0x4D
+#define CAN_ID_MARIO_VAL_DEBUG_LOG_3 		0x4E
+#define CAN_ID_MARIO_VAL_DEBUG_LOG_4 		0x4F
 
-// Drive motor FIFO0
 
-#define MARIO_PITCH_MODE_CMD 0x61
-#define MARIO_MAST_MODE_CMD 0x62
-#define MARIO_ROPS_CMD 0x63
-#define MARIO_PITCH_EMERGENCY_STOP 0x64
-#define MARIO_MAST_EMERGENCY_STOP 0x65
-#define MARIO_DRIVE_MOTOR_RESET 0x66
 
-#define VOLANT_PITCH_MODE_CMD 0x6A
-#define VOLANT_MAST_MODE_CMD 0x6B
-//#define VOLANT_MANUAL_ROPS_CMD 0x6C
+// FIFO0 - Priority filter
+#define FIFO0_RX_FILTER_MASK_HIGH 0xFFFF
+#define FIFO0_RX_FILTER_MASK_LOW  0xFFE0
 
-// Drive motor FIFO1
-
-#define MARIO_PITCH_MANUAL_CMD 0x71
-#define MARIO_MAST_MANUAL_CMD 0x72
-#define MARIO_PITCH_CMD 0x73
-#define MARIO_MAST_CMD 0x74
-
-#define MARIO_MOTOR_ROTOR_RPM 0x77
-
-#define VOLANT_MANUAL_PITCH_CMD 0x7A
-#define VOLANT_MANUAL_MAST_CMD 0x7B
-
-#define BACKPLANE_DUMMY_TRAFFIC_DRIVE 0x7C
-#define VOLANT_DUMMY_TRAFFIC_DRIVE 0x7D
-
-// Drive motor FIFO0 filter
+#define MARIO_FIFO0_RX_FILTER_ID_HIGH 0x40
+#define MARIO_FIFO0_RX_FILTER_ID_LOW  0x40
 
 #define DRIVEMOTOR_FIFO0_RX_FILTER_ID_HIGH 0x0000
 #define DRIVEMOTOR_FIFO0_RX_FILTER_ID_LOW  0x0060
-#define DRIVEMOTOR_FIFO0_RX_FILTER_MASK_HIGH 0xFFFF
-#define DRIVEMOTOR_FIFO0_RX_FILTER_MASK_LOW  0xFFF0
-
-// Drive motor FIFO1 filter
-
-#define DRIVEMOTOR_FIFO1_RX_FILTER_ID_HIGH 0x0000
-#define DRIVEMOTOR_FIFO1_RX_FILTER_ID_LOW  0x0070
-#define DRIVEMOTOR_FIFO1_RX_FILTER_MASK_HIGH 0xFFFF
-#define DRIVEMOTOR_FIFO1_RX_FILTER_MASK_LOW  0xFFF0
-
-
-//
-// Backplane RX CAN messages  --  0x80 -> 0x9F
-//
-
-// Backplane FIFO0
-
-#define MARIO_BUZZER_CMD 0x81
-
-// Backplane FIFO0 filter
 
 #define BACKPLANE_FIFO0_RX_FILTER_ID_HIGH 0x0000
 #define BACKPLANE_FIFO0_RX_FILTER_ID_LOW  0x0080
-#define BACKPLANE_FIFO0_RX_FILTER_MASK_HIGH 0xFFFF
-#define BACKPLANE_FIFO0_RX_FILTER_MASK_LOW  0xFFF0
+
+//FIFO1 - Low priority filter
+#define FIFO1_RX_FILTER_MASK_HIGH 0xFFFF
+#define FIFO1_RX_FILTER_MASK_LOW  0xFFE0
+
+#define FIFO1_RX_FILTER_ID_HIGH 0x40
+#define FIFO1_RX_FILTER_ID_LOW  0x41
+
+#define DRIVEMOTOR_FIFO1_RX_FILTER_ID_HIGH 0x0000
+#define DRIVEMOTOR_FIFO1_RX_FILTER_ID_LOW  0x0070
 
 
 

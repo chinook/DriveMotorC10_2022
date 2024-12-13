@@ -235,6 +235,8 @@ void delay_ms(uint16_t delay16_ms)
 	}
 }
 
+uint8_t flag_buttons = 0;
+
 void ExecuteStateMachine()
 {
 	// Check timers
@@ -247,13 +249,14 @@ void ExecuteStateMachine()
 	{
 		b_timer50ms_flag = 0;
 
-		// flag_can_tx_send = 1;
+		flag_buttons = 1;
+		flag_can_tx_send = 1;
 	}
 	if (b_timer250ms_flag)
 	{
 		b_timer250ms_flag = 0;
 
-		flag_can_tx_send = 1;
+		//flag_can_tx_send = 1;
 
 		flag_send_drive_pitch_config = 1;
 		flag_send_drive_mast_config = 1;
@@ -387,109 +390,18 @@ uint32_t DoStateInit()
 
 uint32_t DoStateAssessPushButtons()
 {
-	return STATE_PITCH_CONTROL;
-
-	static uint32_t motor = DRIVE_MAST;
-	//static uint32_t motor = DRIVE_PITCH;
-
-	static uint8_t is_driving = 0;
+	if (flag_buttons == 1) {
+		flag_buttons = 0;
 
 
-
-	uint8_t buf[4];
-	uint32_t data0 = 0x100;
-	uint32_t data1 = 0x200;
-	uint32_t data2 = 0x300;
-
-	/*
-	if(GPIO_PIN_SET == HAL_GPIO_ReadPin(PB2_GPIO_Port, PB2_Pin)) // PD_14 -- PB2
-	{
-	//HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
-	//HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
-	  if (pb2_value == 1)
-	  {
-		  pb2_value = 0;
-		  // HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
-		  // SetLed(LED2, 0);
-
-		  memcpy(buf, &data0, 4);
-		  TransmitCAN(0x81, buf, 4, 0);
-		  // TransmitCAN(0x71, buf, 4, 0);
-	  }
-	}
-	if (GPIO_PIN_SET == HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin)) // PD_15 -- PB1
-	{
-	//HAL_GPIO_TogglePin(LED3_GPIO_Port, LED3_Pin);
-	//HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
-	  if (pb1_value == 1)
-	  {
-		  pb1_value = 0;
-		  // HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
-		  // SetLed(LED3, 0);
-
-		  memcpy(buf, &data0, 4);
-		  TransmitCAN(0x81, buf, 4, 0);
-		  //TransmitCAN(0x71, buf, 4, 0);
-	  }
-	}
-
-	if (pb1_update)
-	{
-	  memcpy(buf, &data1, 4);
-	  TransmitCAN(0x81, buf, 4, 0);
-	  //TransmitCAN(0x71, buf, 4, 0);
-	  pb1_update = 0;
-	}
-	if (pb2_update)
-	{
-	  memcpy(buf, &data2, 4);
-	  TransmitCAN(0x81, buf, 4, 0);
-	  //TransmitCAN(0x71, buf, 4, 0);
-	  pb2_update = 0;
-	}
-	*/
-
-
-
-	if (motors.motors[motor].mode == MODE_MANUAL)
-	{
-		// Only update manual values if mode is manual
-		if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB2_GPIO_Port, PB2_Pin))
-		{
-			if (!is_driving)
-			{
-				motors.motors[motor].request_enable = 1;
-				motors.motors[motor].manual_direction = DIR_LEFT;
-				motors.motors[motor].manual_command = 1;
-
-				is_driving = 1;
-
-				//TransmitCAN(0x81, (uint8_t*)&data1, 4, 0);
-			}
+		if (HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin) == GPIO_PIN_RESET) {
+			stepper_speed++;
 		}
-		else if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin))
-		{
-			if (!is_driving)
-			{
-				motors.motors[motor].request_enable = 1;
-				motors.motors[motor].manual_direction = DIR_RIGHT;
-				motors.motors[motor].manual_command = 1;
-
-				is_driving = 1;
-
-				//TransmitCAN(0x81, (uint8_t*)&data2, 4, 0);
+		//175 maximum speed
+		if (HAL_GPIO_ReadPin(PB2_GPIO_Port, PB2_Pin) == GPIO_PIN_RESET) {
+			if (stepper_speed > 175) {
+				stepper_speed--;
 			}
-		}
-		else if (is_driving)
-		{
-			// If push buttons enabled motor, need to also disable/stop motor when released
-			motors.motors[motor].request_disable = 1;
-			motors.motors[motor].manual_command = 0;
-			motors.motors[motor].manual_direction = DIR_STOP;
-
-			is_driving = 0;
-
-			//TransmitCAN(0x81, (uint8_t*)&data0, 4, 0);
 		}
 	}
 
@@ -597,9 +509,6 @@ uint32_t DoStatePitchControl()
 			if (motors.pitch_motor.manual_command)
 			{
 				Step(DRIVE_PITCH);
-				//delay_us(800);
-				//delay_ms(2);
-				for (int i = 0; i < 400; ++i);
 			}
 		}
 		else if (motors.pitch_motor.mode == MODE_AUTOMATIC)
@@ -734,29 +643,17 @@ uint32_t DoStateCAN()
 		flag_can_tx_send = 0;
 
 
-		//TransmitCAN(DRIVEMOTOR_PITCH_BEMF, (uint8_t*)&can_tx_data.pitch_motor_bemf, 4, 0);
-		//delay_us(50);
-
-		//TransmitCAN(DRIVEMOTOR_MAST_BEMF, (uint8_t*)&can_tx_data.mast_motor_bemf, 4, 0);
-		//delay_us(50);
-
-
 		uint32_t pitch_mode = can_tx_data.pitch_motor_mode_feedback;
 		uint32_t pitch_mode_msg = ((pitch_mode == MODE_MANUAL) ? MOTOR_MODE_MANUAL : MOTOR_MODE_AUTOMATIC);
-		// 0x11
-		TransmitCAN(DRIVEMOTOR_PITCH_MODE_FEEDBACK, (uint8_t*)&pitch_mode_msg, 4, 0);
-		delay_us(50);
+		TransmitCAN(CAN_ID_STATE_DRIVEMOTOR_PITCH_MODE, (uint8_t*)&pitch_mode_msg, 4, 0);
 
 		uint32_t mast_mode = can_tx_data.mast_motor_mode_feedback;
 		uint32_t mast_mode_msg = ((mast_mode == MODE_MANUAL) ? MOTOR_MODE_MANUAL : MOTOR_MODE_AUTOMATIC);
-		// 0x12
-		TransmitCAN(DRIVEMOTOR_MAST_MODE_FEEDBACK, (uint8_t*)&mast_mode_msg, 4, 0);
-		delay_us(50);
+		TransmitCAN(CAN_ID_STATE_DRIVEMOTOR_MAST_MODE, (uint8_t*)&mast_mode_msg, 4, 0);
 
 
-		// 0x13
-		TransmitCAN(DRIVEMOTOR_PITCH_DONE, (uint8_t*)&can_tx_data.pitch_done, 4, 0);
-		delay_us(50);
+
+		//TransmitCAN(CAN_ID_DRIVEMOTOR_PITCH_MOVE_DONE, (uint8_t*)&can_tx_data.pitch_done, 4, 0);
 
 		/*
 		TransmitCAN(DRIVEMOTOR_PITCH_FAULT_STALL, (uint8_t*)&can_tx_data.pitch_motor_fault_stall, 4, 0);
@@ -779,7 +676,7 @@ uint32_t DoStateROPS()
 {
 	while (b_rops)
 	{
-		delay_us(10);
+		//delay_us(10);
 
 		// Check timers
 		if (b_timer500ms_flag)
@@ -847,24 +744,13 @@ void SetPWM(uint32_t pwm, uint16_t value)
 
 void SetMotorMode(DRIVE_MOTOR motor, uint32_t can_value)
 {
-	uint8_t can_rx = (can_value & 0xFF);
+	uint8_t can_rx = (can_value & 0xFF); //SUPER IMPORTANT
 
 	uint32_t motor_mode = MODE_MANUAL;
 	if (can_rx == MOTOR_MODE_MANUAL)
 		motor_mode = MODE_MANUAL;
 	else if (can_rx == MOTOR_MODE_AUTOMATIC)
 		motor_mode = MODE_AUTOMATIC;
-	else if (can_rx == MOTOR_MODE_TOGGLE)
-	{
-		uint32_t prev_motor_mode = ((motor == DRIVE_PITCH) ? motors.pitch_motor.mode : motors.mast_motor.mode);
-		if (prev_motor_mode == MODE_MANUAL)
-			motor_mode = MODE_AUTOMATIC;
-		else if (prev_motor_mode == MODE_AUTOMATIC)
-			motor_mode = MODE_MANUAL;
-		else
-			motor_mode = MODE_MANUAL;
-
-	}
 	else
 		return; // Do not set motor mode if mode value from CAN is invalid
 
@@ -876,9 +762,8 @@ void SetMotorMode(DRIVE_MOTOR motor, uint32_t can_value)
 
 void SetMotorManualCommand(DRIVE_MOTOR motor, int32_t can_value)
 {
-	// Process manual command
-	// CAN data = direction of turn (STOP, LEFT or RIGHT)
-	// command set to 1 to indicate indefinite turning until stopped
+	can_value = (can_value & 0xFF); //SUPER IMPORTANT
+
 	uint32_t motor_direction = DIR_INVALID;
 	if (can_value == MOTOR_DIRECTION_STOP)
 		motor_direction = DIR_STOP;
@@ -890,7 +775,7 @@ void SetMotorManualCommand(DRIVE_MOTOR motor, int32_t can_value)
 	if (motor_direction == DIR_INVALID)
 		return;
 
-	if (motors.motors[motor].mode == MODE_MANUAL && motor_direction != DIR_STOP)
+	if ((motors.motors[motor].mode == MODE_MANUAL) && (motor_direction != DIR_STOP))
 		motors.motors[motor].request_enable = 1;
 	else if (motors.motors[motor].enabled && motor_direction == DIR_STOP)
 		motors.motors[motor].request_disable = 1;
@@ -921,48 +806,29 @@ void ProcessCanMessage()
 	// Motor Modes
 	//
 	// TODO: (Marc) Should one have precedence over the other ? What if steering wheel sets mode that is then overwritten by mario ?
-	if (pRxHeader.StdId == MARIO_PITCH_MODE_CMD)
+	if (pRxHeader.StdId == CAN_ID_CMD_MARIO_PITCH_MODE)
 	{
 		SetMotorMode(DRIVE_PITCH, can_data);
 	}
-	else if (pRxHeader.StdId == MARIO_MAST_MODE_CMD)
-	{
-		SetMotorMode(DRIVE_MAST, can_data);
-	}
-	else if (pRxHeader.StdId == VOLANT_PITCH_MODE_CMD)
-	{
-		SetMotorMode(DRIVE_PITCH, can_data);
-	}
-	else if (pRxHeader.StdId == VOLANT_MAST_MODE_CMD)
+	else if (pRxHeader.StdId == CAN_ID_CMD_MARIO_MAST_MODE)
 	{
 		SetMotorMode(DRIVE_MAST, can_data);
 	}
 	//
 	// MARIO Manual motor commands
 	//
-	if (pRxHeader.StdId == MARIO_PITCH_MANUAL_CMD)
+	else if (pRxHeader.StdId == CAN_ID_CMD_MARIO_PITCH_DIRECTION)
 	{
 		SetMotorManualCommand(DRIVE_PITCH, can_data);
 	}
-	else if (pRxHeader.StdId == MARIO_MAST_MANUAL_CMD)
-	{
-		SetMotorManualCommand(DRIVE_MAST, can_data);
-	}
-	//
-	// Volant Manual motor commands
-	//
-	else if (pRxHeader.StdId == VOLANT_MANUAL_PITCH_CMD)
-	{
-		SetMotorManualCommand(DRIVE_PITCH, can_data);
-	}
-	else if (pRxHeader.StdId == VOLANT_MANUAL_MAST_CMD)
+	else if (pRxHeader.StdId == CAN_ID_CMD_MARIO_MAST_DIRECTION)
 	{
 		SetMotorManualCommand(DRIVE_MAST, can_data);
 	}
 	//
 	// MARIO Automatic motor commands
 	//
-	else if (pRxHeader.StdId == MARIO_PITCH_CMD)
+	else if (pRxHeader.StdId == CAN_ID_CMD_MARIO_PITCH_SPEED)
 	{
 		// Automatic Mode Mario pitch command -> number of steps to turn
 		// >0 indicates left, <0 indicates right
@@ -982,6 +848,7 @@ void ProcessCanMessage()
 
 		can_tx_data.pitch_done = 0; // New command, pitch is not done
 	}
+	/*
 	else if (pRxHeader.StdId == MARIO_MAST_CMD)
 	{
 		// Automatic Mode MArio mast command -> number of steps to turn
@@ -1019,8 +886,8 @@ void ProcessCanMessage()
 		motors.mast_motor.request_disable = 1;
 
 		DoStateInit();
-	}
-	else if (pRxHeader.StdId == MARIO_ROPS_CMD)
+	}*/
+	else if (pRxHeader.StdId == CAN_ID_CMD_MARIO_ROPS)
 	{
 		uint8_t rops_data = (can_data & 0xFF);
 		if (rops_data == ROPS_ENABLE)
@@ -1032,32 +899,6 @@ void ProcessCanMessage()
 			// Unknown value for ROPS command, assume cmd was to activate ROPS
 			b_rops = 1;
 		}
-	}
-	/*
-	else if (pRxHeader.StdId == VOLANT_MANUAL_ROPS_CMD)
-	{
-		b_rops = 1;
-		motors.pitch_motor.request_enable = 1;
-	}
-	*/
-	//
-	// Mario Sensor data
-	//
-	else if (pRxHeader.StdId == MARIO_MOTOR_ROTOR_RPM)
-	{
-		// TODO: (Marc) Auto ROPS based on value of rotor RPM ?
-	}
-	// else if (pRxHeader.StdId == BACKPLANE_DUMMY_TRAFFIC)
-	//{
-		// NOP  Only dummy traffic for other boards to exit BOFF
-	// }
-	else if (pRxHeader.StdId == BACKPLANE_DUMMY_TRAFFIC_DRIVE)
-	{
-
-	}
-	else if (pRxHeader.StdId == VOLANT_DUMMY_TRAFFIC_DRIVE)
-	{
-		// Dummy traffic from volant
 	}
 	else
 	{
@@ -1133,7 +974,7 @@ HAL_StatusTypeDef TransmitCAN(uint32_t id, uint8_t* buf, uint8_t size, uint8_t w
 		}
 		// Otherwise wait until free mailbox
 		// for (int j = 0; j < 500; ++j) {}
-		delay_us(50);
+		//delay_us(50);
 	}
 	if (!found_mailbox)
 	{
@@ -1152,7 +993,7 @@ HAL_StatusTypeDef TransmitCAN(uint32_t id, uint8_t* buf, uint8_t size, uint8_t w
 				break;
 			// Otherwise wait until 3 free mailbox
 			// for (int j = 0; j < 500; ++j) {}
-			delay_us(50);
+			//delay_us(50);
 		}
 	}
 
@@ -1521,7 +1362,7 @@ static void MX_CAN1_Init(void)
 
 	// Which bits to compare for filter
 	sf_fifo0.FilterMaskIdHigh = 0x0000;
-	sf_fifo0.FilterMaskIdLow = (DRIVEMOTOR_FIFO0_RX_FILTER_MASK_LOW & 0x07FF);
+	sf_fifo0.FilterMaskIdLow = (FIFO0_RX_FILTER_MASK_LOW & 0x07FF);
 
 	sf_fifo0.FilterFIFOAssignment = CAN_FILTER_FIFO0;
 	sf_fifo0.FilterBank = 0; // Which filter to use from the assigned ones
@@ -1546,7 +1387,7 @@ static void MX_CAN1_Init(void)
 
 	// Which bits to compare for filter
 	sf_fifo1.FilterMaskIdHigh = 0x0000;
-	sf_fifo1.FilterMaskIdLow = (DRIVEMOTOR_FIFO1_RX_FILTER_MASK_LOW & 0x7FF);
+	sf_fifo1.FilterMaskIdLow = (FIFO1_RX_FILTER_MASK_LOW & 0x7FF);
 
 	sf_fifo1.FilterFIFOAssignment = CAN_FILTER_FIFO1;
 	sf_fifo1.FilterBank = 1; // Which filter to use from the assigned ones

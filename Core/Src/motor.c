@@ -507,18 +507,21 @@ void EnableDriveExternalPWM(DRIVE_MOTOR drive_index)
 					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
 }
 
+//175us maximum speed
+uint32_t stepper_speed = 175;
 void Step(DRIVE_MOTOR drive_index)
 {
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
-					  drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_SET);
-	//HAL_Delay(5);
-	// for (int i = 0; i < 400; ++i) {}
-	for (int i = 0; i < 90; ++i) {}
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
-					  drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_RESET);
-	//HAL_Delay(5);
-	// for (int i = 0; i < 400; ++i) {}
-	for (int i = 0; i < 90; ++i) {}
+	//for (uint32_t i = 0; i > 200; i++) {
+		HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
+						  drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_SET);
+
+		delay_us(stepper_speed);
+		HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
+						  drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_RESET);
+
+		delay_us(stepper_speed);
+	//}
+
 }
 
 

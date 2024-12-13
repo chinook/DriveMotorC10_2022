@@ -141,6 +141,8 @@ extern TIM_HandleTypeDef* pwm2_timer;
 extern uint32_t pwm1_channel;
 extern uint32_t pwm2_channel;
 
+extern uint32_t stepper_speed;
+
 void InitDrives(SPI_HandleTypeDef* hspi, TIM_HandleTypeDef* htim_pwm1, uint32_t channel_pwm1,
 										 TIM_HandleTypeDef* htim_pwm2, uint32_t channel_pwm2);
 
