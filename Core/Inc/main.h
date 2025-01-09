@@ -36,7 +36,7 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-
+extern uint8_t motor_pitch_on;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -63,7 +63,7 @@ typedef enum
 } MOTOR_MODES;
 
 extern uint8_t b_timer500ms_flag;
-extern uint8_t b_timer50ms_flag;
+extern uint8_t timer50ms_flag;
 extern uint8_t b_timer250ms_flag;
 
 extern uint8_t can1_recv_flag;

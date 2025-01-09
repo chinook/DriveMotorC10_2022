@@ -262,7 +262,7 @@ void TIM4_IRQHandler(void)
   HAL_TIM_IRQHandler(&htim4);
   /* USER CODE BEGIN TIM4_IRQn 1 */
 
-  b_timer50ms_flag = 1;
+  timer50ms_flag = 1;
 
   /* USER CODE END TIM4_IRQn 1 */
 }
@@ -278,7 +278,7 @@ void TIM6_DAC_IRQHandler(void)
   HAL_TIM_IRQHandler(&htim6);
   /* USER CODE BEGIN TIM6_DAC_IRQn 1 */
 
-  b_timer500ms_flag = 1;
+  better_step_function(); //s'active au 200us
 
   /* USER CODE END TIM6_DAC_IRQn 1 */
 }

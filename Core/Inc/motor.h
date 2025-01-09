@@ -141,7 +141,7 @@ extern TIM_HandleTypeDef* pwm2_timer;
 extern uint32_t pwm1_channel;
 extern uint32_t pwm2_channel;
 
-extern uint32_t stepper_speed;
+extern uint32_t speed_stepper_motor_pitch;
 
 void InitDrives(SPI_HandleTypeDef* hspi, TIM_HandleTypeDef* htim_pwm1, uint32_t channel_pwm1,
 										 TIM_HandleTypeDef* htim_pwm2, uint32_t channel_pwm2);
@@ -165,6 +165,7 @@ void EnableDriveIndexer(DRIVE_MOTOR drive_index);
 void EnableDriveExternalPWM(DRIVE_MOTOR drive_index);
 
 void Step(DRIVE_MOTOR drive_index);
+void better_step_function();
 
 void SetDutyCycle(uint32_t pwm_index, uint16_t duty_cycle);
 void DriveMastRight();

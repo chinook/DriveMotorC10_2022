@@ -480,7 +480,7 @@ uint32_t IsDriveAwake(DRIVE_MOTOR drive_index)
 
 void SetDirection(DRIVE_MOTOR drive_index, uint32_t direction)
 {
-	GPIO_PinState state = (direction == DIR_RIGHT) ? 1 : 0;
+	GPIO_PinState state = (direction == DIR_LEFT) ? 1 : 0;
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_DIR],
 					  drive_pins[drive_index][DRIVE_DIR], state);
 }
@@ -507,21 +507,39 @@ void EnableDriveExternalPWM(DRIVE_MOTOR drive_index)
 					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
 }
 
-//175us maximum speed
-uint32_t stepper_speed = 175;
-void Step(DRIVE_MOTOR drive_index)
-{
-	//for (uint32_t i = 0; i > 200; i++) {
-		HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
-						  drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_SET);
+uint32_t multiplicator_slowing_motor = 0;
+uint32_t speed_stepper_motor_pitch = 2; //in multiple of 50us
+uint8_t gpio_pin_value = 0;
+//fonctionne avec un timer d'un multiple de la vitesse maximale
+//better_step_function() s'exécute tous les 50us
+//vitesse max 100us, soit multiplicator_slowing_motor > stepper_motor_pitch où stepper_motor_pitch = 2 (50us*2=100us)
+void better_step_function() {
+	if (speed_stepper_motor_pitch < 2) speed_stepper_motor_pitch = 2; //sécurité sinon moteur bloque et besoin de HARD RESET toute la boite élé
 
-		delay_us(stepper_speed);
-		HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
-						  drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_RESET);
-
-		delay_us(stepper_speed);
-	//}
-
+	if (multiplicator_slowing_motor < speed_stepper_motor_pitch) {
+		multiplicator_slowing_motor++;
+		return;
+	} else {
+		multiplicator_slowing_motor = 0;
+	}
+	//motor_pitch_on = 1;
+	if (motor_pitch_on == 1) {
+		if (gpio_pin_value == 0) {
+			gpio_pin_value = 1;
+			HAL_GPIO_WritePin(drive_ports[DRIVE_PITCH][DRIVE_STEP],
+							  drive_pins[DRIVE_PITCH][DRIVE_STEP], GPIO_PIN_SET);
+		} else if (gpio_pin_value == 1) {
+			gpio_pin_value = 0;
+			HAL_GPIO_WritePin(drive_ports[DRIVE_PITCH][DRIVE_STEP],
+							  drive_pins[DRIVE_PITCH][DRIVE_STEP], GPIO_PIN_RESET);
+		}
+	} else { //reset anyway when motor_pitch_on goes off
+		if (gpio_pin_value == 1) {
+			gpio_pin_value = 0;
+			HAL_GPIO_WritePin(drive_ports[DRIVE_PITCH][DRIVE_STEP],
+							  drive_pins[DRIVE_PITCH][DRIVE_STEP], GPIO_PIN_RESET);
+		}
+	}
 }
 
 

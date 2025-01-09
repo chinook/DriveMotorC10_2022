@@ -141,10 +141,8 @@ typedef struct MotorStatus_
 	uint8_t mode;
 
 	// Direction of motor depending on mode
-	uint8_t manual_direction;
-	uint8_t prev_manual_direction;
-	uint8_t auto_direction;
-	uint8_t prev_auto_direction;
+	uint8_t direction;
+	uint8_t prev_direction;
 
 	// Direction or number of steps depending on motor
 	uint32_t auto_command;
@@ -207,7 +205,7 @@ void DoStateError();
 // void SetPWM(uint32_t pwm, uint16_t value);
 
 void SetMotorMode(DRIVE_MOTOR motor, uint32_t can_value);
-void SetMotorManualCommand(DRIVE_MOTOR motor, int32_t can_value);
+void SetMotorDirection(DRIVE_MOTOR motor, int32_t can_value);
 
 void ProcessCanMessage();
 void CAN_ReceiveFifoCallback(CAN_HandleTypeDef* hcan, uint32_t fifo);
@@ -236,25 +234,30 @@ void delay_ms(uint16_t delay16_ms)
 }
 
 uint8_t flag_buttons = 0;
+uint8_t timer50ms_flag = 0;
+uint8_t timer250ms_counter = 0;
+uint8_t timer500ms_counter = 0;
 
 void ExecuteStateMachine()
 {
 	// Check timers
-	if (b_timer500ms_flag)
+	if (timer500ms_counter >= 10)
 	{
-		b_timer500ms_flag = 0;
+		timer500ms_counter = 0;
 		HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);
 	}
-	if (b_timer50ms_flag)
+	if (timer50ms_flag)
 	{
-		b_timer50ms_flag = 0;
+		timer50ms_flag = 0;
+		timer250ms_counter++;
+		timer500ms_counter++;
 
 		flag_buttons = 1;
 		flag_can_tx_send = 1;
 	}
-	if (b_timer250ms_flag)
+	if (timer250ms_counter >= 5)
 	{
-		b_timer250ms_flag = 0;
+		timer250ms_counter = 0;
 
 		//flag_can_tx_send = 1;
 
@@ -340,10 +343,8 @@ uint32_t DoStateInit()
 	motors.pitch_motor.mode = MODE_MANUAL;
 	motors.pitch_motor.auto_command = 0;
 	motors.pitch_motor.manual_command = 0;
-	motors.pitch_motor.manual_direction = DIR_LEFT;
-	motors.pitch_motor.prev_manual_direction = DIR_INVALID;
-	motors.pitch_motor.auto_direction = DIR_LEFT;
-	motors.pitch_motor.prev_auto_direction = DIR_INVALID;
+	motors.pitch_motor.direction = DIR_STOP;
+	motors.pitch_motor.prev_direction = DIR_STOP;
 
 	motors.mast_motor.enabled = 0;
 	motors.mast_motor.request_enable = 0;
@@ -351,10 +352,8 @@ uint32_t DoStateInit()
 	motors.mast_motor.mode = MODE_MANUAL;
 	motors.mast_motor.auto_command = 0;
 	motors.mast_motor.manual_command = 0;
-	motors.mast_motor.manual_direction = DIR_LEFT;
-	motors.mast_motor.prev_manual_direction = DIR_INVALID;
-	motors.mast_motor.auto_direction = DIR_LEFT;
-	motors.mast_motor.prev_auto_direction = DIR_INVALID;
+	motors.mast_motor.direction = DIR_STOP;
+	motors.mast_motor.prev_direction = DIR_STOP;
 
 
 	HAL_GPIO_WritePin(LED_CANA_GPIO_Port, LED_CANA_Pin, 0);
@@ -375,10 +374,10 @@ uint32_t DoStateInit()
 
 	motors.pitch_motor.enabled = 0;
 
-	SetDirection(DRIVE_PITCH, motors.pitch_motor.manual_direction);
-	delay_us(10);
+	//SetDirection(DRIVE_PITCH, motors.pitch_motor.manual_direction);
+	//delay_us(10);
 	DisableDrive(DRIVE_PITCH);
-	delay_us(10);
+	//delay_us(10);
 	DisableDrive(DRIVE_MAST);
 
 	delay_us(10);
@@ -395,12 +394,12 @@ uint32_t DoStateAssessPushButtons()
 
 
 		if (HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin) == GPIO_PIN_RESET) {
-			stepper_speed++;
+			speed_stepper_motor_pitch++;
 		}
 		//175 maximum speed
 		if (HAL_GPIO_ReadPin(PB2_GPIO_Port, PB2_Pin) == GPIO_PIN_RESET) {
-			if (stepper_speed > 175) {
-				stepper_speed--;
+			if (speed_stepper_motor_pitch > 2) {
+				speed_stepper_motor_pitch--;
 			}
 		}
 	}
@@ -422,8 +421,7 @@ uint8_t CheckEnableDisableMotor(DRIVE_MOTOR motor)
 		// On disable, we reset the commands
 		motors.motors[motor].manual_command = 0;
 		motors.motors[motor].auto_command = 0;
-		motors.motors[motor].prev_manual_direction = DIR_INVALID;
-		motors.motors[motor].prev_auto_direction = DIR_INVALID;
+		motors.motors[motor].prev_direction = DIR_INVALID;
 
 		motors.motors[motor].request_disable = 0;
 		// Make sure we do not reactive drive right after
@@ -454,38 +452,26 @@ uint8_t CheckChangeDirectionMotor(DRIVE_MOTOR motor)
 	if (motor != DRIVE_PITCH && motor != DRIVE_MAST)
 		return 0;
 
-	if (motors.motors[motor].mode == MODE_MANUAL)
+
+	// Check for change of direction
+	if (motors.motors[motor].direction != motors.motors[motor].prev_direction)
 	{
-		// Check for change of direction
-		if (motors.motors[motor].manual_direction != motors.motors[motor].prev_manual_direction)
-		{
-			SetDirection(motor, motors.motors[motor].manual_direction);
-			//delay_us(20);
+		SetDirection(motor, motors.motors[motor].direction);
+		//delay_us(20);
 
-			motors.motors[motor].prev_manual_direction = motors.motors[motor].manual_direction;
+		motors.motors[motor].prev_direction = motors.motors[motor].direction;
 
-			return 1; // Indicates direction changed
-		}
-	}
-	else if (motors.motors[motor].mode == MODE_AUTOMATIC)
-	{
-		// Check for change of direction
-		if (motors.motors[motor].auto_direction != motors.motors[motor].prev_auto_direction)
-		{
-			SetDirection(motor, motors.motors[motor].auto_direction);
-			//delay_us(20);
-
-			motors.motors[motor].prev_auto_direction = motors.motors[motor].auto_direction;
-
-			return 1; // Indicates direction changed
-		}
+		return 1; // Indicates direction changed
 	}
 
 	return 0; // Indicates direction did not change
 }
 
+
+uint8_t motor_pitch_on = 0;
 uint32_t DoStatePitchControl()
 {
+
 	// Periodically re-send the config registers to make sure drive has correct values
 	if (flag_send_drive_pitch_config)
 	{
@@ -494,11 +480,18 @@ uint32_t DoStatePitchControl()
 		SendConfigRegisters(DRIVE_PITCH);
 	}
 
+	//SetMotorManualCommand(DRIVE_PITCH, MOTOR_DIRECTION_LEFT);
+	//motor_pitch_on = 1;
+
 	// Check if requested disable of drive
+	if (motors.pitch_motor.enabled != 1) {
+		motors.motors[DRIVE_PITCH].request_enable = 1;
+	}
 	CheckEnableDisableMotor(DRIVE_PITCH);
 
 	// Check change of direction
 	CheckChangeDirectionMotor(DRIVE_PITCH);
+
 
 	if (motors.pitch_motor.enabled)
 	{
@@ -506,33 +499,48 @@ uint32_t DoStatePitchControl()
 		if ((motors.pitch_motor.mode == MODE_MANUAL) && (!b_rops))
 		{
 			// Check if manual command was set
-			if (motors.pitch_motor.manual_command)
-			{
-				Step(DRIVE_PITCH);
-			}
+			//if (motors.pitch_motor.manual_command)
+			//{
+				if (motors.pitch_motor.direction != DIR_STOP) {
+					motor_pitch_on = 1;
+				} else {
+					motor_pitch_on = 0;
+				}
+				//Step(DRIVE_PITCH);
+			//}
+			//else {
+			//	motor_pitch_on = 0;
+			//}
 		}
 		else if (motors.pitch_motor.mode == MODE_AUTOMATIC)
 		{
 			// Check if automatic command was set
-			if (motors.pitch_motor.auto_command)
-			{
-				Step(DRIVE_PITCH);
+			//if (motors.pitch_motor.auto_command)
+			//{
+				//Step(DRIVE_PITCH);
 				// delay_ms(2);
-				for (int i = 0; i < 2000; ++i);
+				//for (int i = 0; i < 2000; ++i);
 
 				// Decrease number of steps to do
-				--motors.pitch_motor.auto_command;
+				//--motors.pitch_motor.auto_command;
+
+				if (motors.pitch_motor.direction != DIR_STOP) {
+					motor_pitch_on = 1;
+				} else {
+					motor_pitch_on = 0;
+				}
+
 
 				// Check if command is done
-				if (motors.pitch_motor.auto_command == 0)
-				{
+				//if (motors.pitch_motor.auto_command == 0)
+				//{
 					// Pitch done
-					can_tx_data.pitch_done = 1;
+					//can_tx_data.pitch_done = 1;
 
-					motors.pitch_motor.request_disable = 1;
-					motors.pitch_motor.prev_auto_direction = DIR_INVALID;
-				}
-			}
+					//motors.pitch_motor.request_disable = 1;
+					//motors.pitch_motor.prev_auto_direction = DIR_INVALID;
+				//}
+			//}
 		}
 	}
 
@@ -578,20 +586,20 @@ uint32_t DoStateMastControl()
 	if (directionChanged &&
 		motors.mast_motor.enabled)
 	{
-		if ((motors.mast_motor.mode == MODE_MANUAL && motors.mast_motor.manual_direction == DIR_STOP) ||
-			(motors.mast_motor.mode == MODE_AUTOMATIC && motors.mast_motor.auto_direction == DIR_STOP))
+		if ((motors.mast_motor.mode == MODE_MANUAL && motors.mast_motor.direction == DIR_STOP) ||
+			(motors.mast_motor.mode == MODE_AUTOMATIC && motors.mast_motor.direction == DIR_STOP))
 		{
 			DriveMastStop();
 			//delay_us(20);
 		}
-		else if ((motors.mast_motor.mode == MODE_MANUAL && motors.mast_motor.manual_direction == DIR_LEFT) ||
-				 (motors.mast_motor.mode == MODE_AUTOMATIC && motors.mast_motor.auto_direction == DIR_LEFT))
+		else if ((motors.mast_motor.mode == MODE_MANUAL && motors.mast_motor.direction == DIR_LEFT) ||
+				 (motors.mast_motor.mode == MODE_AUTOMATIC && motors.mast_motor.direction == DIR_LEFT))
 		{
 			DriveMastLeft();
 			//delay_us(20);
 		}
-		else if ((motors.mast_motor.mode == MODE_MANUAL && motors.mast_motor.manual_direction == DIR_RIGHT) ||
-				 (motors.mast_motor.mode == MODE_AUTOMATIC && motors.mast_motor.auto_direction == DIR_RIGHT))
+		else if ((motors.mast_motor.mode == MODE_MANUAL && motors.mast_motor.direction == DIR_RIGHT) ||
+				 (motors.mast_motor.mode == MODE_AUTOMATIC && motors.mast_motor.direction == DIR_RIGHT))
 		{
 			DriveMastRight();
 			//delay_us(20);
@@ -726,33 +734,31 @@ void DoStateError()
 	Error_Handler();
 }
 
-/*
-void SetPWM(uint32_t pwm, uint16_t value)
-{
-	HAL_TIM_PWM_Stop(pwm_timers[pwm], pwm_channels[pwm]);
-
-	TIM_OC_InitTypeDef sConfigOC;
-
-	sConfigOC.OCMode = TIM_OCMODE_PWM1;
-	sConfigOC.Pulse = value;
-	sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-	sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-	HAL_TIM_PWM_ConfigChannel(pwm_timers[pwm], &sConfigOC, pwm_channels[pwm]);
-	// HAL_TIM_PWM_Start(pwm_timers[pwm], pwm_channels[pwm]);
-}
-*/
-
+//uint16_t test_debug_log_can_message[200] = {0};
+//uint8_t test_debug_log_can_message_counter = 0;
 void SetMotorMode(DRIVE_MOTOR motor, uint32_t can_value)
 {
-	uint8_t can_rx = (can_value & 0xFF); //SUPER IMPORTANT
+	can_value = (can_value & 0xFF); //SUPER IMPORTANT
+
+
+	/*if (test_debug_log_can_message_counter > 200) {
+		test_debug_log_can_message_counter = 0;
+	} else {
+		test_debug_log_can_message_counter++;
+	}
+	test_debug_log_can_message[test_debug_log_can_message_counter] = can_value; */
 
 	uint32_t motor_mode = MODE_MANUAL;
-	if (can_rx == MOTOR_MODE_MANUAL)
+	if (can_value == MOTOR_MODE_MANUAL) {
 		motor_mode = MODE_MANUAL;
-	else if (can_rx == MOTOR_MODE_AUTOMATIC)
+		speed_stepper_motor_pitch = 2;
+	}
+	else if (can_value == MOTOR_MODE_AUTOMATIC) {
 		motor_mode = MODE_AUTOMATIC;
-	else
+	}
+	else {
 		return; // Do not set motor mode if mode value from CAN is invalid
+	}
 
 	if (motor == DRIVE_PITCH)
 		motors.pitch_motor.mode = motor_mode;
@@ -760,9 +766,17 @@ void SetMotorMode(DRIVE_MOTOR motor, uint32_t can_value)
 		motors.mast_motor.mode = motor_mode;
 }
 
-void SetMotorManualCommand(DRIVE_MOTOR motor, int32_t can_value)
+
+void SetMotorDirection(DRIVE_MOTOR motor, int32_t can_value)
 {
 	can_value = (can_value & 0xFF); //SUPER IMPORTANT
+
+	/*if (test_debug_log_can_message_counter > 200) {
+		test_debug_log_can_message_counter = 0;
+	} else {
+		test_debug_log_can_message_counter++;
+	}
+	test_debug_log_can_message[test_debug_log_can_message_counter] = can_value;*/
 
 	uint32_t motor_direction = DIR_INVALID;
 	if (can_value == MOTOR_DIRECTION_STOP)
@@ -772,16 +786,19 @@ void SetMotorManualCommand(DRIVE_MOTOR motor, int32_t can_value)
 	else if (can_value == MOTOR_DIRECTION_RIGHT)
 		motor_direction = DIR_RIGHT;
 
-	if (motor_direction == DIR_INVALID)
-		return;
+	//if (motor_direction == DIR_INVALID)
+	//	return;
 
-	if ((motors.motors[motor].mode == MODE_MANUAL) && (motor_direction != DIR_STOP))
-		motors.motors[motor].request_enable = 1;
-	else if (motors.motors[motor].enabled && motor_direction == DIR_STOP)
-		motors.motors[motor].request_disable = 1;
+	//if ((motors.motors[motor].mode == MODE_MANUAL) && (motor_direction != DIR_STOP)) {
+	//	motors.motors[motor].request_enable = 1;
+	motors.motors[motor].direction = motor_direction;
+	//	motors.motors[motor].manual_command = 1;
+	//}
 
-	motors.motors[motor].manual_direction = motor_direction;
-	motors.motors[motor].manual_command = 1;
+	//else if (motors.motors[motor].enabled && motor_direction == DIR_STOP)
+	//	motors.motors[motor].request_disable = 1;
+
+
 }
 
 void ProcessCanMessage()
@@ -819,11 +836,11 @@ void ProcessCanMessage()
 	//
 	else if (pRxHeader.StdId == CAN_ID_CMD_MARIO_PITCH_DIRECTION)
 	{
-		SetMotorManualCommand(DRIVE_PITCH, can_data);
+		SetMotorDirection(DRIVE_PITCH, can_data);
 	}
 	else if (pRxHeader.StdId == CAN_ID_CMD_MARIO_MAST_DIRECTION)
 	{
-		SetMotorManualCommand(DRIVE_MAST, can_data);
+		SetMotorDirection(DRIVE_MAST, can_data);
 	}
 	//
 	// MARIO Automatic motor commands
@@ -832,21 +849,30 @@ void ProcessCanMessage()
 	{
 		// Automatic Mode Mario pitch command -> number of steps to turn
 		// >0 indicates left, <0 indicates right
-		memcpy(bytesToType.bytes, rxData, 4);
-		int32_t cmd_val = bytesToType.int_val;
+		//memcpy(bytesToType.bytes, rxData, 4);
+		//int32_t cmd_val = bytesToType.int_val;
 
-		if (cmd_val == 0)
-			motors.pitch_motor.auto_direction = DIR_STOP;
-		else if (cmd_val > 0)
-			motors.pitch_motor.auto_direction = DIR_LEFT;
-		else
-			motors.pitch_motor.auto_direction = DIR_RIGHT;
+		can_data = (can_data & 0xFF); //SUPER IMPORTANT
 
-		if (motors.pitch_motor.mode == MODE_AUTOMATIC)
-			motors.pitch_motor.request_enable = 1;
-		motors.pitch_motor.auto_command = abs(cmd_val); // Number of steps to turn
+		if (can_data >= 100) {
+			speed_stepper_motor_pitch = 2;
+		} else {
+			speed_stepper_motor_pitch = (uint32_t) ( 1 / (float) ((float) can_data / 100));
+		}
 
-		can_tx_data.pitch_done = 0; // New command, pitch is not done
+		//if (cmd_val == 0)
+		//	motors.pitch_motor.auto_direction = DIR_STOP;
+		//else if (cmd_val > 0)
+		//	motors.pitch_motor.auto_direction = DIR_LEFT;
+		//else
+		//	motors.pitch_motor.auto_direction = DIR_RIGHT;
+
+		//if (motors.pitch_motor.mode == MODE_AUTOMATIC)
+		//	motors.pitch_motor.request_enable = 1;
+		//motors.pitch_motor.auto_command = abs(cmd_val); // Number of steps to turn
+		//motors.pitch_motor.auto_command = 1;
+
+		//can_tx_data.pitch_done = 0; // New command, pitch is not done
 	}
 	/*
 	else if (pRxHeader.StdId == MARIO_MAST_CMD)
@@ -1064,179 +1090,9 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  HAL_Delay(10);
-  // DoStateInit();
-
-
   while (1)
   {
 	  ExecuteStateMachine();
-
-	  // Make sure State machine is not using 100% of cpu
-	  //delay_us(50);
-  }
-
-
-
-
-  HAL_Delay(10);
-  DoStateInit();
-  HAL_Delay(10);
-
-  // Set duty cycles
-  //SetPWM(PWM1, 480);
-  //SetPWM(PWM2, 420);
-  //SetPWM(PWM1, 480);
-  //SetPWM(PWM2, 350);
-
-  //HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-  //HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
-
-  // HAL_Delay(10);
-
-  // SetDirection(DRIVE_PITCH, mot_direction);
-  // HAL_Delay(5);
-  // SetDirection(DRIVE_MAST, mot_direction);
-
-  uint8_t drive_pitch_enabled = 0;
-  uint8_t mot_direction = 2;
-
-  while (1)
-  {
-	  // HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);
-	  // HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
-
-	  if (b_timer500ms_flag)
-	  {
-		  b_timer500ms_flag = 0;
-
-		  HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);
-
-		  // HAL_GPIO_TogglePin(TEST_BIN1_GPIO_Port, TEST_BIN1_Pin);
-	  }
-
-	  // HAL_CAN_GetRxFifoFillLevel();
-
-	  // ExecuteStateMachine();
-	  //InitDrives(&hspi1, &htim1);
-	  //DEBUG_SPI(DRIVE_PITCH)
-	  //HAL_Delay(10);
-
-	  //for (int i = 0; i < 1000; ++i) {}
-	  //Step(DRIVE_MAST);
-	  //Step(DRIVE_PITCH);
-
-
-
-
-	  for (int i = 0; i < 1000; ++i) {}
-	  // DEBUG_SPI(DRIVE_MAST);
-
-	  uint8_t update_dir = 0;
-	  uint8_t step = 0;
-
-
-	  //if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin))
-	  /*
-	  if (mot_step)
-	  {
-		  if (mot_direction != old_mot_direction)
-		  {
-			  update_dir = 1;
-			  old_mot_direction = mot_direction;
-		  }
-
-		  step = 1;
-	  }
-	  */
-
-	  /*
-	  if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB2_GPIO_Port, PB2_Pin))
-	  {
-		  if (mot_direction != 1)
-			  update_dir = 1;
-		  mot_direction = 1;
-
-		  step = 1;
-	  }
-	  else if (GPIO_PIN_RESET == HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin))
-	  {
-		  if (mot_direction != 0)
-			  update_dir = 1;
-		  mot_direction = 0;
-
-		  step = 1;
-	  }
-	  //else if (!mot_step)
-	  else
-	  {
-		  update_dir = 0;
-		  step = 0;
-	  }
-
-
-	  if (update_dir)
-	  {
-		  SetDirection(DRIVE_PITCH, mot_direction);
-		  for (int i = 0; i < 2000; ++i) {}
-	  }
-
-	  if (step)
-	  {
-		  if (!drive_pitch_enabled)
-		  {
-			  EnableDrive(DRIVE_PITCH);
-			  drive_pitch_enabled = 1;
-			  HAL_Delay(1);
-		  }
-		  Step(DRIVE_PITCH);
-
-		  if (mot_direction == 0)
-		  {
-			  //DriveMastRight();
-			  //Step(DRIVE_PITCH);
-		  }
-		  else
-		  {
-			  // DriveMastLeft();
-			  //Step(DRIVE_PITCH);
-		  }
-
-		  for (int i = 0; i < 1000; ++i) {}
-	  }
-	  else
-	  {
-		  // DriveMastStop();
-		  if (drive_pitch_enabled)
-		  {
-			  DisableDrive(DRIVE_PITCH);
-			  drive_pitch_enabled = 0;
-
-		  }
-		  for (int i = 0; i < 1000; ++i) {}
-	  }
-
-	  //Step(DRIVE_PITCH);
-
-	  uint8_t stall1 = HAL_GPIO_ReadPin(nSTALL1_GPIO_Port, nSTALL1_Pin);
-	  uint8_t fault1 = HAL_GPIO_ReadPin(nFAULT1_GPIO_Port, nFAULT1_Pin);
-
-	  uint8_t fault2 = HAL_GPIO_ReadPin(nFAULT2_GPIO_Port, nFAULT2_Pin);
-	  if (fault1 == 0)
-	  {
-		  //HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
-	  }
-	  else
-	  {
-		  //HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_RESET);
-	  }
-	  */
-
-
-	  // HAL_Delay(250);
-	  // ExecuteStateMachine();
-	  // TODO: (Marc) Better with timer resolution
-	  //HAL_Delay(5);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -1256,7 +1112,7 @@ void SystemClock_Config(void)
   /** Configure the main internal regulator output voltage
   */
   __HAL_RCC_PWR_CLK_ENABLE();
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE2);
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
@@ -1266,7 +1122,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = 8;
-  RCC_OscInitStruct.PLL.PLLN = 96;
+  RCC_OscInitStruct.PLL.PLLN = 128;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 2;
   RCC_OscInitStruct.PLL.PLLR = 2;
@@ -1279,11 +1135,11 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV2;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4) != HAL_OK)
   {
     Error_Handler();
   }
@@ -1305,7 +1161,7 @@ static void MX_CAN1_Init(void)
 
   /* USER CODE END CAN1_Init 1 */
   hcan1.Instance = CAN1;
-  hcan1.Init.Prescaler = 6;
+  hcan1.Init.Prescaler = 8;
   hcan1.Init.Mode = CAN_MODE_NORMAL;
   hcan1.Init.SyncJumpWidth = CAN_SJW_3TQ;
   hcan1.Init.TimeSeg1 = CAN_BS1_11TQ;
@@ -1748,9 +1604,9 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 480;
+  htim4.Init.Prescaler = 639;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 5000;
+  htim4.Init.Period = 4999;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
@@ -1839,9 +1695,9 @@ static void MX_TIM6_Init(void)
 
   /* USER CODE END TIM6_Init 1 */
   htim6.Instance = TIM6;
-  htim6.Init.Prescaler = 480;
+  htim6.Init.Prescaler = 99;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim6.Init.Period = 50000;
+  htim6.Init.Period = 31;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
   {
@@ -2004,7 +1860,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 }
