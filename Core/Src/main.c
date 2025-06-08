@@ -93,10 +93,14 @@ uint8_t b_timer250ms_flag = 0;
 
 
 uint8_t flag_can_tx_send = 0;
+uint8_t flag_pitch_control = 0;
+uint8_t flag_mast_control = 0;
 
 uint8_t flag_send_drive_pitch_config = 0;
 uint8_t flag_send_drive_mast_config = 0;
 
+uint32_t speed_stepper_motor_pitch = 0; //0-100%
+uint32_t can_pitch_motor_direction = 0;
 
 uint8_t txData[8];
 uint8_t rxData[8];
@@ -131,34 +135,10 @@ CAN_TX_Data can_tx_data;
 // Motor control
 //
 
+Motorss motorss;
 
-typedef struct MotorStatus_
-{
-	uint8_t enabled;
-	uint8_t request_enable;
-	uint8_t request_disable;
 
-	uint8_t mode;
 
-	// Direction of motor depending on mode
-	uint8_t direction;
-	uint8_t prev_direction;
-
-	// Direction or number of steps depending on motor
-	uint32_t auto_command;
-	uint32_t manual_command;
-} MotorStatus;
-
-typedef union
-{
-	struct
-	{
-		MotorStatus mast_motor;
-		MotorStatus pitch_motor;
-	};
-	MotorStatus motors[2];
-} Motors;
-Motors motors;
 
 
 // TEMP TEMP
@@ -254,6 +234,8 @@ void ExecuteStateMachine()
 
 		flag_buttons = 1;
 		flag_can_tx_send = 1;
+		flag_pitch_control = 1;
+		flag_mast_control = 1;
 	}
 	if (timer250ms_counter >= 5)
 	{
@@ -337,23 +319,23 @@ uint32_t DoStateInit()
 	InitDrives(&hspi1, &htim1, TIM_CHANNEL_2, &htim3, TIM_CHANNEL_3);
 
 	// Initialize the motor control values
-	motors.pitch_motor.enabled = 0;
-	motors.pitch_motor.request_enable = 0;
-	motors.pitch_motor.request_disable = 0;
-	motors.pitch_motor.mode = MODE_MANUAL;
-	motors.pitch_motor.auto_command = 0;
-	motors.pitch_motor.manual_command = 0;
-	motors.pitch_motor.direction = DIR_STOP;
-	motors.pitch_motor.prev_direction = DIR_STOP;
+	motorss.motors[DRIVE_PITCH].enabled = 0;
+	motorss.motors[DRIVE_PITCH].request_enable = 0;
+	motorss.motors[DRIVE_PITCH].request_disable = 0;
+	motorss.motors[DRIVE_PITCH].mode = MODE_MANUAL;
+	motorss.motors[DRIVE_PITCH].auto_command = 0;
+	motorss.motors[DRIVE_PITCH].manual_command = 0;
+	motorss.motors[DRIVE_PITCH].direction = DIR_STOP;
+	motorss.motors[DRIVE_PITCH].prev_direction = DIR_STOP;
 
-	motors.mast_motor.enabled = 0;
-	motors.mast_motor.request_enable = 0;
-	motors.mast_motor.request_disable = 0;
-	motors.mast_motor.mode = MODE_MANUAL;
-	motors.mast_motor.auto_command = 0;
-	motors.mast_motor.manual_command = 0;
-	motors.mast_motor.direction = DIR_STOP;
-	motors.mast_motor.prev_direction = DIR_STOP;
+	motorss.motors[DRIVE_MAST].enabled = 0;
+	motorss.motors[DRIVE_MAST].request_enable = 0;
+	motorss.motors[DRIVE_MAST].request_disable = 0;
+	motorss.motors[DRIVE_MAST].mode = MODE_MANUAL;
+	motorss.motors[DRIVE_MAST].auto_command = 0;
+	motorss.motors[DRIVE_MAST].manual_command = 0;
+	motorss.motors[DRIVE_MAST].direction = DIR_STOP;
+	motorss.motors[DRIVE_MAST].prev_direction = DIR_STOP;
 
 
 	HAL_GPIO_WritePin(LED_CANA_GPIO_Port, LED_CANA_Pin, 0);
@@ -372,7 +354,7 @@ uint32_t DoStateInit()
 	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
 	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);
 
-	motors.pitch_motor.enabled = 0;
+	motorss.motors[DRIVE_PITCH].enabled = 0;
 
 	//SetDirection(DRIVE_PITCH, motors.pitch_motor.manual_direction);
 	//delay_us(10);
@@ -392,7 +374,7 @@ uint32_t DoStateAssessPushButtons()
 	if (flag_buttons == 1) {
 		flag_buttons = 0;
 
-
+		/*
 		if (HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin) == GPIO_PIN_RESET) {
 			speed_stepper_motor_pitch++;
 		}
@@ -401,7 +383,7 @@ uint32_t DoStateAssessPushButtons()
 			if (speed_stepper_motor_pitch > 2) {
 				speed_stepper_motor_pitch--;
 			}
-		}
+		}*/
 	}
 
 	return STATE_PITCH_CONTROL;
@@ -413,33 +395,33 @@ uint8_t CheckEnableDisableMotor(DRIVE_MOTOR motor)
 		return 0;
 
 	// Check if requested disable of drive
-	if (motors.motors[motor].request_disable)
+	if (motorss.motors[motor].request_disable)
 	{
 		DisableDrive(motor);
 		//delay_us(20);
 
 		// On disable, we reset the commands
-		motors.motors[motor].manual_command = 0;
-		motors.motors[motor].auto_command = 0;
-		motors.motors[motor].prev_direction = DIR_INVALID;
+		motorss.motors[motor].manual_command = 0;
+		motorss.motors[motor].auto_command = 0;
+		motorss.motors[motor].prev_direction = DIR_INVALID;
 
-		motors.motors[motor].request_disable = 0;
+		motorss.motors[motor].request_disable = 0;
 		// Make sure we do not reactive drive right after
-		motors.motors[motor].request_enable = 0;
+		motorss.motors[motor].request_enable = 0;
 
-		motors.motors[motor].enabled = 0;
+		motorss.motors[motor].enabled = 0;
 
 		return 1; // Indicates enable/disable status changed
 	}
 	// Check if requested enable of drive
-	else if (motors.motors[motor].request_enable)
+	else if (motorss.motors[motor].request_enable)
 	{
 		EnableDrive(motor);
 		//delay_us(20);
 
-		motors.motors[motor].request_enable = 0;
+		motorss.motors[motor].request_enable = 0;
 
-		motors.motors[motor].enabled = 1;
+		motorss.motors[motor].enabled = 1;
 
 		return 1; //Indicates enable/disable status changed
 	}
@@ -454,12 +436,12 @@ uint8_t CheckChangeDirectionMotor(DRIVE_MOTOR motor)
 
 
 	// Check for change of direction
-	if (motors.motors[motor].direction != motors.motors[motor].prev_direction)
+	if (motorss.motors[motor].direction != motorss.motors[motor].prev_direction)
 	{
-		SetDirection(motor, motors.motors[motor].direction);
+		SetDirection(motor, motorss.motors[motor].direction);
 		//delay_us(20);
 
-		motors.motors[motor].prev_direction = motors.motors[motor].direction;
+		motorss.motors[motor].prev_direction = motorss.motors[motor].direction;
 
 		return 1; // Indicates direction changed
 	}
@@ -471,49 +453,55 @@ uint8_t CheckChangeDirectionMotor(DRIVE_MOTOR motor)
 uint8_t motor_pitch_on = 0;
 uint32_t DoStatePitchControl()
 {
+	/*
+	if (flag_pitch_control == 1) {
+		flag_pitch_control = 0;
+	}
+	else {
+		return STATE_MAST_CONTROL;
+	}*/
 
 	// Periodically re-send the config registers to make sure drive has correct values
 	if (flag_send_drive_pitch_config)
 	{
 		flag_send_drive_pitch_config = 0;
-
 		SendConfigRegisters(DRIVE_PITCH);
 	}
 
-	//SetMotorManualCommand(DRIVE_PITCH, MOTOR_DIRECTION_LEFT);
-	//motor_pitch_on = 1;
-
 	// Check if requested disable of drive
-	if (motors.pitch_motor.enabled != 1) {
-		motors.motors[DRIVE_PITCH].request_enable = 1;
+	//if (motorss.motors[DRIVE_PITCH].enabled == 1) {
+		//motorss.motors[DRIVE_PITCH].request_disable = 1;
+	//}
+	if (motorss.motors[DRIVE_PITCH].enabled != 1) {
+		motorss.motors[DRIVE_PITCH].request_enable = 1;
 	}
 	CheckEnableDisableMotor(DRIVE_PITCH);
 
-	// Check change of direction
-	CheckChangeDirectionMotor(DRIVE_PITCH);
 
 
-	if (motors.pitch_motor.enabled)
+	if (motorss.motors[DRIVE_PITCH].enabled)
 	{
+		//speed_stepper_motor_pitch = speed_stepper_motor_pitch;
+		/*
+		if (motorss.motors[DRIVE_PITCH].direction != DIR_STOP) {
+			motor_pitch_on = 1;
+		} else {
+			motor_pitch_on = 0;
+		}*/
 		// Only try to turn the motor if the pitch drive is enabled
-		if ((motors.pitch_motor.mode == MODE_MANUAL) && (!b_rops))
-		{
+		//if ((motors.motors[DRIVE_PITCH].mode == MODE_MANUAL) && (!b_rops))
+		//{
 			// Check if manual command was set
 			//if (motors.pitch_motor.manual_command)
 			//{
-				if (motors.pitch_motor.direction != DIR_STOP) {
-					motor_pitch_on = 1;
-				} else {
-					motor_pitch_on = 0;
-				}
 				//Step(DRIVE_PITCH);
 			//}
 			//else {
 			//	motor_pitch_on = 0;
 			//}
-		}
-		else if (motors.pitch_motor.mode == MODE_AUTOMATIC)
-		{
+		//}
+		//else if (motors.motors[DRIVE_PITCH].mode == MODE_AUTOMATIC || b_rops == 1)
+		//{
 			// Check if automatic command was set
 			//if (motors.pitch_motor.auto_command)
 			//{
@@ -523,13 +511,6 @@ uint32_t DoStatePitchControl()
 
 				// Decrease number of steps to do
 				//--motors.pitch_motor.auto_command;
-
-				if (motors.pitch_motor.direction != DIR_STOP) {
-					motor_pitch_on = 1;
-				} else {
-					motor_pitch_on = 0;
-				}
-
 
 				// Check if command is done
 				//if (motors.pitch_motor.auto_command == 0)
@@ -541,10 +522,14 @@ uint32_t DoStatePitchControl()
 					//motors.pitch_motor.prev_auto_direction = DIR_INVALID;
 				//}
 			//}
-		}
+		//}
+	} else {
+		motor_pitch_on = 0;
 	}
 
-	can_tx_data.pitch_motor_mode_feedback = motors.pitch_motor.mode;
+
+
+	can_tx_data.pitch_motor_mode_feedback = motorss.motors[DRIVE_PITCH].mode;
 
 	// Check for faults or stall errors
 	uint8_t stall = !HAL_GPIO_ReadPin(nSTALL2_GPIO_Port, nSTALL2_Pin);
@@ -561,6 +546,12 @@ uint32_t DoStatePitchControl()
 
 uint32_t DoStateMastControl()
 {
+	if (flag_mast_control == 1) {
+		flag_mast_control = 0;
+	}
+	else {
+		return STATE_CAN;
+	}
 	// Periodically re-send the config registers to make sure drive has correct values
 	if (flag_send_drive_mast_config)
 	{
@@ -570,36 +561,38 @@ uint32_t DoStateMastControl()
 	}
 
 	// Check if requested disable of drive
+	if (motorss.motors[DRIVE_MAST].enabled != 1) {
+		motorss.motors[DRIVE_MAST].request_enable = 1;
+	}
+	CheckEnableDisableMotor(DRIVE_MAST);
+
 	uint8_t enableChanged = CheckEnableDisableMotor(DRIVE_MAST);
 	if (enableChanged)
 	{
 		// Make sure to disable the PWMs if drive was disabled
-		if (motors.mast_motor.enabled == 0)
+		if (motorss.motors[DRIVE_MAST].enabled == 0)
 		{
 			DriveMastStop();
 			//delay_us(20);
 		}
 	}
 
-	// Check change of direction
+	//Check change of direction
 	uint8_t directionChanged = CheckChangeDirectionMotor(DRIVE_MAST);
-	if (directionChanged &&
-		motors.mast_motor.enabled)
+
+	if (motorss.motors[DRIVE_MAST].enabled)
 	{
-		if ((motors.mast_motor.mode == MODE_MANUAL && motors.mast_motor.direction == DIR_STOP) ||
-			(motors.mast_motor.mode == MODE_AUTOMATIC && motors.mast_motor.direction == DIR_STOP))
+		if (motorss.motors[DRIVE_MAST].direction == DIR_STOP)
 		{
 			DriveMastStop();
 			//delay_us(20);
 		}
-		else if ((motors.mast_motor.mode == MODE_MANUAL && motors.mast_motor.direction == DIR_LEFT) ||
-				 (motors.mast_motor.mode == MODE_AUTOMATIC && motors.mast_motor.direction == DIR_LEFT))
+		else if (motorss.motors[DRIVE_MAST].direction == DIR_LEFT)
 		{
 			DriveMastLeft();
 			//delay_us(20);
 		}
-		else if ((motors.mast_motor.mode == MODE_MANUAL && motors.mast_motor.direction == DIR_RIGHT) ||
-				 (motors.mast_motor.mode == MODE_AUTOMATIC && motors.mast_motor.direction == DIR_RIGHT))
+		else if (motorss.motors[DRIVE_MAST].direction == DIR_RIGHT)
 		{
 			DriveMastRight();
 			//delay_us(20);
@@ -629,7 +622,7 @@ uint32_t DoStateMastControl()
 	}
 	*/
 
-	can_tx_data.mast_motor_mode_feedback = motors.mast_motor.mode;
+	can_tx_data.mast_motor_mode_feedback = motorss.motors[DRIVE_MAST].mode;
 
 	// Check for faults or stall errors
 	uint8_t stall = !HAL_GPIO_ReadPin(nSTALL1_GPIO_Port, nSTALL1_Pin);
@@ -695,7 +688,8 @@ uint32_t DoStateROPS()
 		if (b_timer50ms_flag)
 		{
 			b_timer50ms_flag = 0;
-
+			flag_pitch_control = 1;
+			flag_mast_control = 1;
 			// flag_can_tx_send = 1;
 		}
 		if (b_timer250ms_flag)
@@ -706,9 +700,9 @@ uint32_t DoStateROPS()
 		}
 
 		// Safety check, if we have a command from MARIO, make sure drive is enabled
-		if (motors.pitch_motor.auto_command && !motors.pitch_motor.enabled)
-			motors.pitch_motor.request_enable = 1;
-		motors.pitch_motor.mode = MODE_AUTOMATIC;
+		//if (motors.motors[DRIVE_PITCH].auto_command && !motors.motors[DRIVE_PITCH].enabled)
+		//	motors.motors[DRIVE_PITCH].request_enable = 1;
+		//motors.motors[DRIVE_PITCH].mode = MODE_AUTOMATIC;
 
 		DoStateAssessPushButtons();
 		DoStatePitchControl();
@@ -751,7 +745,6 @@ void SetMotorMode(DRIVE_MOTOR motor, uint32_t can_value)
 	uint32_t motor_mode = MODE_MANUAL;
 	if (can_value == MOTOR_MODE_MANUAL) {
 		motor_mode = MODE_MANUAL;
-		speed_stepper_motor_pitch = 2;
 	}
 	else if (can_value == MOTOR_MODE_AUTOMATIC) {
 		motor_mode = MODE_AUTOMATIC;
@@ -760,10 +753,7 @@ void SetMotorMode(DRIVE_MOTOR motor, uint32_t can_value)
 		return; // Do not set motor mode if mode value from CAN is invalid
 	}
 
-	if (motor == DRIVE_PITCH)
-		motors.pitch_motor.mode = motor_mode;
-	else if (motor == DRIVE_MAST)
-		motors.mast_motor.mode = motor_mode;
+	motorss.motors[motor].mode = motor_mode;
 }
 
 
@@ -785,20 +775,13 @@ void SetMotorDirection(DRIVE_MOTOR motor, int32_t can_value)
 		motor_direction = DIR_LEFT;
 	else if (can_value == MOTOR_DIRECTION_RIGHT)
 		motor_direction = DIR_RIGHT;
+	else
+		return;
 
-	//if (motor_direction == DIR_INVALID)
-	//	return;
+	motorss.motors[motor].direction = motor_direction;
 
-	//if ((motors.motors[motor].mode == MODE_MANUAL) && (motor_direction != DIR_STOP)) {
-	//	motors.motors[motor].request_enable = 1;
-	motors.motors[motor].direction = motor_direction;
-	//	motors.motors[motor].manual_command = 1;
-	//}
-
-	//else if (motors.motors[motor].enabled && motor_direction == DIR_STOP)
-	//	motors.motors[motor].request_disable = 1;
-
-
+	// Check change of direction
+	CheckChangeDirectionMotor(motor);
 }
 
 void ProcessCanMessage()
@@ -837,6 +820,12 @@ void ProcessCanMessage()
 	else if (pRxHeader.StdId == CAN_ID_CMD_MARIO_PITCH_DIRECTION)
 	{
 		SetMotorDirection(DRIVE_PITCH, can_data);
+
+		if (motorss.motors[DRIVE_PITCH].direction != DIR_STOP) {
+			motor_pitch_on = 1;
+		} else {
+			motor_pitch_on = 0;
+		}
 	}
 	else if (pRxHeader.StdId == CAN_ID_CMD_MARIO_MAST_DIRECTION)
 	{
@@ -847,32 +836,10 @@ void ProcessCanMessage()
 	//
 	else if (pRxHeader.StdId == CAN_ID_CMD_MARIO_PITCH_SPEED)
 	{
-		// Automatic Mode Mario pitch command -> number of steps to turn
-		// >0 indicates left, <0 indicates right
-		//memcpy(bytesToType.bytes, rxData, 4);
-		//int32_t cmd_val = bytesToType.int_val;
-
 		can_data = (can_data & 0xFF); //SUPER IMPORTANT
 
-		if (can_data >= 100) {
-			speed_stepper_motor_pitch = 2;
-		} else {
-			speed_stepper_motor_pitch = (uint32_t) ( 1 / (float) ((float) can_data / 100));
-		}
-
-		//if (cmd_val == 0)
-		//	motors.pitch_motor.auto_direction = DIR_STOP;
-		//else if (cmd_val > 0)
-		//	motors.pitch_motor.auto_direction = DIR_LEFT;
-		//else
-		//	motors.pitch_motor.auto_direction = DIR_RIGHT;
-
-		//if (motors.pitch_motor.mode == MODE_AUTOMATIC)
-		//	motors.pitch_motor.request_enable = 1;
-		//motors.pitch_motor.auto_command = abs(cmd_val); // Number of steps to turn
-		//motors.pitch_motor.auto_command = 1;
-
-		//can_tx_data.pitch_done = 0; // New command, pitch is not done
+		//speed_stepper_motor_pitch = 100;
+		speed_stepper_motor_pitch = can_data;
 	}
 	/*
 	else if (pRxHeader.StdId == MARIO_MAST_CMD)

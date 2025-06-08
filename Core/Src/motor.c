@@ -149,7 +149,7 @@ void TransmitMotorSPI(DRIVE_MOTOR drive_index, uint8_t reg)
 	//HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
 	//		  		    drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
 
-	for (int i = 0; i < 1000; ++i) {}
+	//for (int i = 0; i < 1000; ++i) {}
 	// uint16_t data = *(uint16_t*)(&drive_regs[drive_index]) + reg;
 	uint16_t data = *((uint16_t*)(&drive_regs[drive_index])) | (reg << 12);
 
@@ -162,7 +162,7 @@ void TransmitMotorSPI(DRIVE_MOTOR drive_index, uint8_t reg)
 		// TODO: (Marc) Should really be the error led once it's soldered
 		HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
 	}
-	for (int i = 0; i < 1000; ++i) {}
+	//for (int i = 0; i < 1000; ++i) {}
 
 	//HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
 	//				  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
@@ -508,38 +508,38 @@ void EnableDriveExternalPWM(DRIVE_MOTOR drive_index)
 }
 
 uint32_t multiplicator_slowing_motor = 0;
-uint32_t speed_stepper_motor_pitch = 2; //in multiple of 50us
+uint32_t speed_stepper_motor_pitch_int_converted = 2; //in multiple of 50us
 uint8_t gpio_pin_value = 0;
 //fonctionne avec un timer d'un multiple de la vitesse maximale
 //better_step_function() s'exécute tous les 50us
 //vitesse max 100us, soit multiplicator_slowing_motor > stepper_motor_pitch où stepper_motor_pitch = 2 (50us*2=100us)
 void better_step_function() {
-	if (speed_stepper_motor_pitch < 2) speed_stepper_motor_pitch = 2; //sécurité sinon moteur bloque et besoin de HARD RESET toute la boite élé
+	if (speed_stepper_motor_pitch >= 100) {
+		speed_stepper_motor_pitch_int_converted = 2;
+	} else {
+		speed_stepper_motor_pitch_int_converted = (uint32_t) ( 1 / (float) ((float) speed_stepper_motor_pitch / 100));
+	}
+	if (speed_stepper_motor_pitch_int_converted < 2) speed_stepper_motor_pitch_int_converted = 2; //sécurité sinon moteur bloque et besoin de HARD RESET toute la boite élé
 
-	if (multiplicator_slowing_motor < speed_stepper_motor_pitch) {
+
+	if (multiplicator_slowing_motor <= speed_stepper_motor_pitch_int_converted) {
 		multiplicator_slowing_motor++;
-		return;
 	} else {
 		multiplicator_slowing_motor = 0;
-	}
-	//motor_pitch_on = 1;
-	if (motor_pitch_on == 1) {
-		if (gpio_pin_value == 0) {
-			gpio_pin_value = 1;
-			HAL_GPIO_WritePin(drive_ports[DRIVE_PITCH][DRIVE_STEP],
-							  drive_pins[DRIVE_PITCH][DRIVE_STEP], GPIO_PIN_SET);
-		} else if (gpio_pin_value == 1) {
-			gpio_pin_value = 0;
-			HAL_GPIO_WritePin(drive_ports[DRIVE_PITCH][DRIVE_STEP],
-							  drive_pins[DRIVE_PITCH][DRIVE_STEP], GPIO_PIN_RESET);
-		}
-	} else { //reset anyway when motor_pitch_on goes off
-		if (gpio_pin_value == 1) {
-			gpio_pin_value = 0;
-			HAL_GPIO_WritePin(drive_ports[DRIVE_PITCH][DRIVE_STEP],
-							  drive_pins[DRIVE_PITCH][DRIVE_STEP], GPIO_PIN_RESET);
+		if (motor_pitch_on == 1) {
+			if (gpio_pin_value == 0) {
+				gpio_pin_value = 1;
+				HAL_GPIO_WritePin(drive_ports[DRIVE_PITCH][DRIVE_STEP],
+								  drive_pins[DRIVE_PITCH][DRIVE_STEP], GPIO_PIN_SET);
+			} else if (gpio_pin_value == 1) {
+				gpio_pin_value = 0;
+				HAL_GPIO_WritePin(drive_ports[DRIVE_PITCH][DRIVE_STEP],
+								  drive_pins[DRIVE_PITCH][DRIVE_STEP], GPIO_PIN_RESET);
+			}
 		}
 	}
+
+
 }
 
 
@@ -558,7 +558,7 @@ void SetDutyCycle(uint32_t pwm_index, uint16_t duty_cycle)
 	sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
 	HAL_TIM_PWM_ConfigChannel(pwm_timers[pwm_index], &sConfigOC, pwm_channels[pwm_index]);
 
-	// HAL_TIM_PWM_Start(htim, TIM_CHANNEL_2); // start pwm generation
+	//HAL_TIM_PWM_Start(htim, TIM_CHANNEL_2); // start pwm generation
 }
 
 void DriveMastRight()

@@ -62,11 +62,36 @@ typedef enum
 	MODE_AUTOMATIC
 } MOTOR_MODES;
 
+typedef struct MotorStatus_
+{
+	uint8_t enabled;
+	uint8_t request_enable;
+	uint8_t request_disable;
+
+	uint8_t mode;
+
+	// Direction of motor depending on mode
+	uint8_t direction;
+	uint8_t prev_direction;
+
+	// Direction or number of steps depending on motor
+	uint32_t auto_command;
+	uint32_t manual_command;
+} MotorStatus;
+
+typedef struct Motorss_
+{
+	MotorStatus motors[2];
+} Motorss;
+extern Motorss motorss;
+
 extern uint8_t b_timer500ms_flag;
 extern uint8_t timer50ms_flag;
 extern uint8_t b_timer250ms_flag;
 
 extern uint8_t can1_recv_flag;
+extern uint32_t speed_stepper_motor_pitch;
+extern uint32_t can_pitch_motor_direction;
 
 extern CAN_TxHeaderTypeDef pTxHeader;
 extern CAN_RxHeaderTypeDef pRxHeader;
