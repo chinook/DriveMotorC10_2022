@@ -168,23 +168,6 @@ void TransmitMotorSPI(DRIVE_MOTOR drive_index, uint8_t reg)
 	//				  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
 }
 
-void DEBUG_SPI(DRIVE_MOTOR drive_index)
-{
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
-
-	//TransmitMotorSPI(drive_index, 0);
-
-	uint8_t tx_data = 0x70 | 0x80;
-	HAL_SPI_Transmit(hspi, &tx_data, 1, HAL_MAX_DELAY);
-	uint8_t rx_data;
-	HAL_SPI_Receive(hspi, &rx_data, 1, HAL_MAX_DELAY);
-
-
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
-}
-
 uint16_t ReceiveMotorSPI(DRIVE_MOTOR drive_index, uint8_t reg)
 {
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
@@ -203,6 +186,68 @@ uint16_t ReceiveMotorSPI(DRIVE_MOTOR drive_index, uint8_t reg)
 
 	return 0;
 }
+
+void DEBUG_SPI(DRIVE_MOTOR drive_index)
+{
+	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+
+	//TransmitMotorSPI(drive_index, 0);
+
+	uint8_t tx_data = 0x70 | 0x80;
+	HAL_SPI_Transmit(hspi, &tx_data, 1, HAL_MAX_DELAY);
+	uint8_t rx_data;
+	HAL_SPI_Receive(hspi, &rx_data, 1, HAL_MAX_DELAY);
+
+
+	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+					  drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+}
+
+void DEBUG_SPI_CHATGPT(DRIVE_MOTOR drive_index)
+{
+    // Sélectionner le DRV8711 (CS = LOW)
+    HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+                      drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+
+    // Étape 1 : envoyer la commande de lecture du registre 0x07 (STATUS)
+    uint8_t tx_cmd[2] = { 0xF0, 0x00 };  // 0xF000 = lecture du registre 0x07
+    uint8_t rx_dummy[2] = {0};
+
+    HAL_SPI_TransmitReceive(hspi, tx_cmd, rx_dummy, 2, HAL_MAX_DELAY);
+
+    // Désélectionner momentanément (important selon le timing du DRV8711)
+    HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+                      drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+    HAL_Delay(1); // Petit délai si nécessaire
+
+    // Réactiver CS pour lire la vraie donnée
+    HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+                      drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+
+    uint8_t tx_dummy[2] = { 0x00, 0x00 };
+    uint8_t rx_data[2] = { 0 };
+
+    HAL_SPI_TransmitReceive(hspi, tx_dummy, rx_data, 2, HAL_MAX_DELAY);
+
+    // Désélection finale du périphérique
+    HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+                      drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+
+    // Recomposer les 16 bits reçus
+    uint16_t result = (rx_data[0] << 8) | rx_data[1];
+
+    // Affichage debug via UART ou autre
+    printf("DRV8711[%d] STATUS = 0x%04X\r\n", drive_index, result);
+
+    if (result & (1 << 0)) printf("  OCP: Overcurrent\n");
+    if (result & (1 << 1)) printf("  UVLO: Undervoltage\n");
+    if (result & (1 << 2)) printf("  OTS: Overtemp\n");
+    if (result & (1 << 3)) printf("  PDF: Power Fault\n");
+    if (result & (1 << 4)) printf("  STDLAT: Stall Latch\n");
+}
+
+
 
 void SendDriveRegisters(DRIVE_MOTOR drive_index)
 {

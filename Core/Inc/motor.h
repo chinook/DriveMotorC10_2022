@@ -174,6 +174,7 @@ void DriveMastLeft();
 void DriveMastStop();
 
 void DEBUG_SPI(DRIVE_MOTOR drive_index);
+void DEBUG_SPI_CHATGPT(DRIVE_MOTOR drive_index);
 
 
 

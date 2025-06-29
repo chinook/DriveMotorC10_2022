@@ -225,6 +225,16 @@ void ExecuteStateMachine()
 	{
 		timer500ms_counter = 0;
 		HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);
+		DEBUG_SPI_CHATGPT(DRIVE_MAST);
+
+		uint8_t tx[2] = {0xAA, 0x55}; // Donnée de test
+		uint8_t rx[2] = {0};
+
+		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_6, GPIO_PIN_RESET);
+		HAL_SPI_TransmitReceive(&hspi1, tx, rx, 2, HAL_MAX_DELAY);
+		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_6, GPIO_PIN_SET);
+
+		printf("Echo SPI : %02X %02X\n", rx[0], rx[1]);
 	}
 	if (timer50ms_flag)
 	{
@@ -374,6 +384,26 @@ uint32_t DoStateAssessPushButtons()
 	if (flag_buttons == 1) {
 		flag_buttons = 0;
 
+		if (HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin) == GPIO_PIN_RESET) {
+			speed_stepper_motor_pitch = 100;
+			motorss.motors[DRIVE_PITCH].request_enable = 1;
+			motorss.motors[DRIVE_PITCH].direction = DIR_LEFT;
+			motor_pitch_on = 1;
+
+		}
+		else if (HAL_GPIO_ReadPin(PB2_GPIO_Port, PB2_Pin) == GPIO_PIN_RESET) {
+			ResetDrive(DRIVE_PITCH);
+
+			/*speed_stepper_motor_pitch = 100;
+			motorss.motors[DRIVE_PITCH].request_enable = 1;
+			motorss.motors[DRIVE_PITCH].direction = DIR_RIGHT;
+			motor_pitch_on = 1;*/
+		}
+		/*else {
+			motorss.motors[DRIVE_PITCH].request_disable = 1;
+		}*/
+
+
 		/*
 		if (HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin) == GPIO_PIN_RESET) {
 			speed_stepper_motor_pitch++;
@@ -472,22 +502,25 @@ uint32_t DoStatePitchControl()
 	//if (motorss.motors[DRIVE_PITCH].enabled == 1) {
 		//motorss.motors[DRIVE_PITCH].request_disable = 1;
 	//}
-	if (motorss.motors[DRIVE_PITCH].enabled != 1) {
+	/*if (motorss.motors[DRIVE_PITCH].enabled != 1) {
 		motorss.motors[DRIVE_PITCH].request_enable = 1;
-	}
+	} */
 	CheckEnableDisableMotor(DRIVE_PITCH);
 
 
 
 	if (motorss.motors[DRIVE_PITCH].enabled)
 	{
-		//speed_stepper_motor_pitch = speed_stepper_motor_pitch;
+		speed_stepper_motor_pitch = speed_stepper_motor_pitch;
+
+
 		/*
 		if (motorss.motors[DRIVE_PITCH].direction != DIR_STOP) {
 			motor_pitch_on = 1;
 		} else {
 			motor_pitch_on = 0;
-		}*/
+		}
+		*/
 		// Only try to turn the motor if the pitch drive is enabled
 		//if ((motors.motors[DRIVE_PITCH].mode == MODE_MANUAL) && (!b_rops))
 		//{
@@ -652,7 +685,11 @@ uint32_t DoStateCAN()
 		uint32_t mast_mode_msg = ((mast_mode == MODE_MANUAL) ? MOTOR_MODE_MANUAL : MOTOR_MODE_AUTOMATIC);
 		TransmitCAN(CAN_ID_STATE_DRIVEMOTOR_MAST_MODE, (uint8_t*)&mast_mode_msg, 4, 0);
 
-
+		static float test = 0;
+		static float debug_log_4_value = 0;
+		debug_log_4_value = debug_log_4_value + test;
+		TransmitCAN(CAN_ID_MARIO_VAL_DEBUG_LOG_4, (uint8_t*)&debug_log_4_value, 4, 0);
+		test++;
 
 		//TransmitCAN(CAN_ID_DRIVEMOTOR_PITCH_MOVE_DONE, (uint8_t*)&can_tx_data.pitch_done, 4, 0);
 
@@ -786,6 +823,15 @@ void SetMotorDirection(DRIVE_MOTOR motor, int32_t can_value)
 
 void ProcessCanMessage()
 {
+	if (HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin) == GPIO_PIN_RESET) {
+		return 0;
+	}
+	if (HAL_GPIO_ReadPin(PB2_GPIO_Port, PB2_Pin) == GPIO_PIN_RESET) {
+		return 0;
+	}
+	//return 0;
+
+
 	typedef union BytesToType_
 	{
 		struct
@@ -916,13 +962,13 @@ void CAN_ReceiveFifoCallback(CAN_HandleTypeDef* hcan, uint32_t fifo)
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef* hcan)
 {
-	HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
+	//HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
 	CAN_ReceiveFifoCallback(hcan, CAN_RX_FIFO0);
 }
 
 void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef* hcan)
 {
-	HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
+	//HAL_GPIO_TogglePin(LED_CANB_GPIO_Port, LED_CANB_Pin);
 	CAN_ReceiveFifoCallback(hcan, CAN_RX_FIFO1);
 }
 
@@ -972,7 +1018,7 @@ HAL_StatusTypeDef TransmitCAN(uint32_t id, uint8_t* buf, uint8_t size, uint8_t w
 	if (!found_mailbox)
 	{
 		// TODO: (Marc) Should really be the error led once it's been soldered
-		HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
+		//HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
 	}
 
 	if (with_priority)
@@ -1338,11 +1384,11 @@ static void MX_SPI1_Init(void)
   hspi1.Instance = SPI1;
   hspi1.Init.Mode = SPI_MODE_MASTER;
   hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.DataSize = SPI_DATASIZE_16BIT;
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_128;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
