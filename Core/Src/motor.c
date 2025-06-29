@@ -107,9 +107,9 @@ void InitDrives(SPI_HandleTypeDef* hspi_, TIM_HandleTypeDef* htim_pwm1, uint32_t
 	pwm_channels[1] = pwm2_channel;
 
 	HAL_GPIO_WritePin(drive_ports[DRIVE_PITCH][DRIVE_CS],
-							  drive_pins[DRIVE_PITCH][DRIVE_CS], GPIO_PIN_RESET);
+							  drive_pins[DRIVE_PITCH][DRIVE_CS], GPIO_PIN_SET);
 	HAL_GPIO_WritePin(drive_ports[DRIVE_MAST][DRIVE_CS],
-							  drive_pins[DRIVE_MAST][DRIVE_CS], GPIO_PIN_RESET);
+							  drive_pins[DRIVE_MAST][DRIVE_CS], GPIO_PIN_SET);
 
 	InitDriveMotor(DRIVE_MAST);
 	HAL_Delay(5);
@@ -140,16 +140,14 @@ void InitDrives(SPI_HandleTypeDef* hspi_, TIM_HandleTypeDef* htim_pwm1, uint32_t
 
 }
 
-
 void TransmitMotorSPI(DRIVE_MOTOR drive_index, uint8_t reg)
 {
 	if (reg >= 7)
 		return;
 
-	//HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-	//		  		    drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
+			  		    drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
 
-	//for (int i = 0; i < 1000; ++i) {}
 	// uint16_t data = *(uint16_t*)(&drive_regs[drive_index]) + reg;
 	uint16_t data = *((uint16_t*)(&drive_regs[drive_index])) | (reg << 12);
 
