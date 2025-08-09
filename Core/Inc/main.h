@@ -37,6 +37,7 @@ extern "C" {
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
 extern uint8_t motor_pitch_on;
+extern SPI_HandleTypeDef hspi1;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -48,8 +49,6 @@ extern uint8_t motor_pitch_on;
 /* USER CODE BEGIN EM */
 
 /* USER CODE END EM */
-
-void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
@@ -135,6 +134,10 @@ void delay_ms(uint16_t delay16_ms);
 #define PB1_Pin GPIO_PIN_9
 #define PB1_GPIO_Port GPIOE
 #define PB1_EXTI_IRQn EXTI9_5_IRQn
+#define BIN2_1_Pin GPIO_PIN_10
+#define BIN2_1_GPIO_Port GPIOE
+#define BIN1_1_Pin GPIO_PIN_11
+#define BIN1_1_GPIO_Port GPIOE
 #define DIR1_Pin GPIO_PIN_12
 #define DIR1_GPIO_Port GPIOE
 #define STEP1_Pin GPIO_PIN_13
@@ -161,6 +164,7 @@ void delay_ms(uint16_t delay16_ms);
 #define LED3_GPIO_Port GPIOD
 #define STEP2_Pin GPIO_PIN_1
 #define STEP2_GPIO_Port GPIOE
+
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

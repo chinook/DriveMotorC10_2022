@@ -66,20 +66,14 @@ enum STATES
 /* Private variables ---------------------------------------------------------*/
 CAN_HandleTypeDef hcan1;
 
-I2C_HandleTypeDef hi2c1;
-I2C_HandleTypeDef hi2c3;
-
 SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
-TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim5;
 TIM_HandleTypeDef htim6;
 TIM_HandleTypeDef htim7;
-
-UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
@@ -152,15 +146,11 @@ uint8_t pb1_update, pb2_update;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_CAN1_Init(void);
-static void MX_I2C1_Init(void);
-static void MX_I2C3_Init(void);
 static void MX_SPI1_Init(void);
-static void MX_USART2_UART_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM5_Init(void);
-static void MX_TIM3_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
@@ -223,7 +213,9 @@ void ExecuteStateMachine()
 	// Check timers
 	if (timer500ms_counter >= 10)
 	{
+
 		timer500ms_counter = 0;
+		/*
 		HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);
 		DEBUG_SPI_CHATGPT(DRIVE_MAST);
 
@@ -235,6 +227,7 @@ void ExecuteStateMachine()
 		HAL_GPIO_WritePin(GPIOE, GPIO_PIN_6, GPIO_PIN_SET);
 
 		printf("Echo SPI : %02X %02X\n", rx[0], rx[1]);
+		*/
 	}
 	if (timer50ms_flag)
 	{
@@ -255,6 +248,10 @@ void ExecuteStateMachine()
 
 		flag_send_drive_pitch_config = 1;
 		flag_send_drive_mast_config = 1;
+
+		if (flag_drive_fault == 1) {
+			HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);
+		}
 	}
 
 	// Check for ROPS or emergency stop flags
@@ -326,34 +323,33 @@ uint32_t DoStateInit()
 
 	memset(&can_tx_data, 0, sizeof(CAN_TX_Data));
 
-	InitDrives(&hspi1, &htim1, TIM_CHANNEL_2, &htim3, TIM_CHANNEL_3);
+	InitDrives();
 
 	// Initialize the motor control values
-	motorss.motors[DRIVE_PITCH].enabled = 0;
-	motorss.motors[DRIVE_PITCH].request_enable = 0;
-	motorss.motors[DRIVE_PITCH].request_disable = 0;
-	motorss.motors[DRIVE_PITCH].mode = MODE_MANUAL;
-	motorss.motors[DRIVE_PITCH].auto_command = 0;
-	motorss.motors[DRIVE_PITCH].manual_command = 0;
-	motorss.motors[DRIVE_PITCH].direction = DIR_STOP;
-	motorss.motors[DRIVE_PITCH].prev_direction = DIR_STOP;
+	motorss.motors[DRIVE1].enabled = 0;
+	motorss.motors[DRIVE1].request_enable = 0;
+	motorss.motors[DRIVE1].request_disable = 0;
+	motorss.motors[DRIVE1].mode = MODE_MANUAL;
+	motorss.motors[DRIVE1].auto_command = 0;
+	motorss.motors[DRIVE1].manual_command = 0;
+	motorss.motors[DRIVE1].direction = DIR_STOP;
+	motorss.motors[DRIVE1].prev_direction = DIR_STOP;
 
-	motorss.motors[DRIVE_MAST].enabled = 0;
-	motorss.motors[DRIVE_MAST].request_enable = 0;
-	motorss.motors[DRIVE_MAST].request_disable = 0;
-	motorss.motors[DRIVE_MAST].mode = MODE_MANUAL;
-	motorss.motors[DRIVE_MAST].auto_command = 0;
-	motorss.motors[DRIVE_MAST].manual_command = 0;
-	motorss.motors[DRIVE_MAST].direction = DIR_STOP;
-	motorss.motors[DRIVE_MAST].prev_direction = DIR_STOP;
+	motorss.motors[DRIVE2].enabled = 0;
+	motorss.motors[DRIVE2].request_enable = 0;
+	motorss.motors[DRIVE2].request_disable = 0;
+	motorss.motors[DRIVE2].mode = MODE_MANUAL;
+	motorss.motors[DRIVE2].auto_command = 0;
+	motorss.motors[DRIVE2].manual_command = 0;
+	motorss.motors[DRIVE2].direction = DIR_STOP;
+	motorss.motors[DRIVE2].prev_direction = DIR_STOP;
 
 
-	HAL_GPIO_WritePin(LED_CANA_GPIO_Port, LED_CANA_Pin, 0);
-	HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, 0);
 
-	HAL_Delay(10);
-	EnableDriveExternalPWM(DRIVE_MAST);
-	HAL_Delay(10);
+
+	//HAL_Delay(10);
+	//EnableDriveExternalPWM(DRIVE_MAST);
+	//HAL_Delay(10);
 
 	//SetDirection(DRIVE_PITCH, DIR_FORWARD);
 	//SetDirection(DRIVE_MAST, DIR_FORWARD);
@@ -361,20 +357,20 @@ uint32_t DoStateInit()
 	// HAL_GPIO_WritePin(TEST_BIN1_GPIO_Port, TEST_BIN1_Pin, GPIO_PIN_SET);
 	// HAL_GPIO_WritePin(TEST_BIN2_GPIO_Port, TEST_BIN2_Pin, GPIO_PIN_SET);
 
-	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
-	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);
+	//HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
+	//HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);
 
-	motorss.motors[DRIVE_PITCH].enabled = 0;
+	motorss.motors[DRIVE1].enabled = 0;
 
 	//SetDirection(DRIVE_PITCH, motors.pitch_motor.manual_direction);
 	//delay_us(10);
-	DisableDrive(DRIVE_PITCH);
+	DisableDrive(DRIVE1);
 	//delay_us(10);
-	DisableDrive(DRIVE_MAST);
+	DisableDrive(DRIVE2);
 
-	delay_us(10);
-	ResetStatusRegisters(DRIVE_PITCH);
-	delay_us(10);
+	//delay_us(10);
+	//ResetStatusRegisters(DRIVE_PITCH);
+	//delay_us(10);
 
 	return STATE_ASSESS_PUSH_BUTTONS;
 }
@@ -386,13 +382,13 @@ uint32_t DoStateAssessPushButtons()
 
 		if (HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin) == GPIO_PIN_RESET) {
 			speed_stepper_motor_pitch = 100;
-			motorss.motors[DRIVE_PITCH].request_enable = 1;
-			motorss.motors[DRIVE_PITCH].direction = DIR_LEFT;
+			motorss.motors[DRIVE2].request_enable = 1;
+			motorss.motors[DRIVE2].direction = DIR_LEFT;
 			motor_pitch_on = 1;
 
 		}
 		else if (HAL_GPIO_ReadPin(PB2_GPIO_Port, PB2_Pin) == GPIO_PIN_RESET) {
-			ResetDrive(DRIVE_PITCH);
+			ResetDrive(DRIVE2);
 
 			/*speed_stepper_motor_pitch = 100;
 			motorss.motors[DRIVE_PITCH].request_enable = 1;
@@ -421,7 +417,7 @@ uint32_t DoStateAssessPushButtons()
 
 uint8_t CheckEnableDisableMotor(DRIVE_MOTOR motor)
 {
-	if (motor != DRIVE_PITCH && motor != DRIVE_MAST)
+	if (motor != DRIVE1 && motor != DRIVE2)
 		return 0;
 
 	// Check if requested disable of drive
@@ -461,7 +457,7 @@ uint8_t CheckEnableDisableMotor(DRIVE_MOTOR motor)
 
 uint8_t CheckChangeDirectionMotor(DRIVE_MOTOR motor)
 {
-	if (motor != DRIVE_PITCH && motor != DRIVE_MAST)
+	if (motor != DRIVE1 && motor != DRIVE2)
 		return 0;
 
 
@@ -483,6 +479,7 @@ uint8_t CheckChangeDirectionMotor(DRIVE_MOTOR motor)
 uint8_t motor_pitch_on = 0;
 uint32_t DoStatePitchControl()
 {
+	return STATE_MAST_CONTROL;
 	/*
 	if (flag_pitch_control == 1) {
 		flag_pitch_control = 0;
@@ -491,13 +488,14 @@ uint32_t DoStatePitchControl()
 		return STATE_MAST_CONTROL;
 	}*/
 
+	/*
 	// Periodically re-send the config registers to make sure drive has correct values
 	if (flag_send_drive_pitch_config)
 	{
 		flag_send_drive_pitch_config = 0;
 		SendConfigRegisters(DRIVE_PITCH);
 	}
-
+	*/
 	// Check if requested disable of drive
 	//if (motorss.motors[DRIVE_PITCH].enabled == 1) {
 		//motorss.motors[DRIVE_PITCH].request_disable = 1;
@@ -505,11 +503,11 @@ uint32_t DoStatePitchControl()
 	/*if (motorss.motors[DRIVE_PITCH].enabled != 1) {
 		motorss.motors[DRIVE_PITCH].request_enable = 1;
 	} */
-	CheckEnableDisableMotor(DRIVE_PITCH);
+	CheckEnableDisableMotor(DRIVE2);
 
 
 
-	if (motorss.motors[DRIVE_PITCH].enabled)
+	if (motorss.motors[DRIVE2].enabled)
 	{
 		speed_stepper_motor_pitch = speed_stepper_motor_pitch;
 
@@ -562,7 +560,7 @@ uint32_t DoStatePitchControl()
 
 
 
-	can_tx_data.pitch_motor_mode_feedback = motorss.motors[DRIVE_PITCH].mode;
+	can_tx_data.pitch_motor_mode_feedback = motorss.motors[DRIVE2].mode;
 
 	// Check for faults or stall errors
 	uint8_t stall = !HAL_GPIO_ReadPin(nSTALL2_GPIO_Port, nSTALL2_Pin);
@@ -571,7 +569,7 @@ uint32_t DoStatePitchControl()
 
 	if (fault)
 	{
-		ResetStatusRegisters(DRIVE_PITCH);
+		ResetStatusRegisters(DRIVE2); //nul
 	}
 
 	return STATE_MAST_CONTROL;
@@ -579,12 +577,14 @@ uint32_t DoStatePitchControl()
 
 uint32_t DoStateMastControl()
 {
+	return STATE_CAN;
 	if (flag_mast_control == 1) {
 		flag_mast_control = 0;
 	}
 	else {
 		return STATE_CAN;
 	}
+	/*
 	// Periodically re-send the config registers to make sure drive has correct values
 	if (flag_send_drive_mast_config)
 	{
@@ -592,18 +592,18 @@ uint32_t DoStateMastControl()
 
 		SendConfigRegisters(DRIVE_MAST);
 	}
-
+	*/
 	// Check if requested disable of drive
-	if (motorss.motors[DRIVE_MAST].enabled != 1) {
-		motorss.motors[DRIVE_MAST].request_enable = 1;
+	if (motorss.motors[DRIVE1].enabled != 1) {
+		motorss.motors[DRIVE1].request_enable = 1;
 	}
-	CheckEnableDisableMotor(DRIVE_MAST);
+	CheckEnableDisableMotor(DRIVE1);
 
-	uint8_t enableChanged = CheckEnableDisableMotor(DRIVE_MAST);
+	uint8_t enableChanged = CheckEnableDisableMotor(DRIVE2);
 	if (enableChanged)
 	{
 		// Make sure to disable the PWMs if drive was disabled
-		if (motorss.motors[DRIVE_MAST].enabled == 0)
+		if (motorss.motors[DRIVE1].enabled == 0)
 		{
 			DriveMastStop();
 			//delay_us(20);
@@ -611,21 +611,21 @@ uint32_t DoStateMastControl()
 	}
 
 	//Check change of direction
-	uint8_t directionChanged = CheckChangeDirectionMotor(DRIVE_MAST);
+	uint8_t directionChanged = CheckChangeDirectionMotor(DRIVE1);
 
-	if (motorss.motors[DRIVE_MAST].enabled)
+	if (motorss.motors[DRIVE1].enabled)
 	{
-		if (motorss.motors[DRIVE_MAST].direction == DIR_STOP)
+		if (motorss.motors[DRIVE1].direction == DIR_STOP)
 		{
 			DriveMastStop();
 			//delay_us(20);
 		}
-		else if (motorss.motors[DRIVE_MAST].direction == DIR_LEFT)
+		else if (motorss.motors[DRIVE1].direction == DIR_LEFT)
 		{
 			DriveMastLeft();
 			//delay_us(20);
 		}
-		else if (motorss.motors[DRIVE_MAST].direction == DIR_RIGHT)
+		else if (motorss.motors[DRIVE1].direction == DIR_RIGHT)
 		{
 			DriveMastRight();
 			//delay_us(20);
@@ -655,7 +655,7 @@ uint32_t DoStateMastControl()
 	}
 	*/
 
-	can_tx_data.mast_motor_mode_feedback = motorss.motors[DRIVE_MAST].mode;
+	can_tx_data.mast_motor_mode_feedback = motorss.motors[DRIVE1].mode;
 
 	// Check for faults or stall errors
 	uint8_t stall = !HAL_GPIO_ReadPin(nSTALL1_GPIO_Port, nSTALL1_Pin);
@@ -664,7 +664,7 @@ uint32_t DoStateMastControl()
 
 	if (fault)
 	{
-		ResetStatusRegisters(DRIVE_MAST);
+		ResetStatusRegisters(DRIVE1); //nul
 	}
 
 	return STATE_CAN;
@@ -854,20 +854,20 @@ void ProcessCanMessage()
 	// TODO: (Marc) Should one have precedence over the other ? What if steering wheel sets mode that is then overwritten by mario ?
 	if (pRxHeader.StdId == CAN_ID_CMD_MARIO_PITCH_MODE)
 	{
-		SetMotorMode(DRIVE_PITCH, can_data);
+		SetMotorMode(DRIVE2, can_data);
 	}
 	else if (pRxHeader.StdId == CAN_ID_CMD_MARIO_MAST_MODE)
 	{
-		SetMotorMode(DRIVE_MAST, can_data);
+		SetMotorMode(DRIVE1, can_data);
 	}
 	//
 	// MARIO Manual motor commands
 	//
 	else if (pRxHeader.StdId == CAN_ID_CMD_MARIO_PITCH_DIRECTION)
 	{
-		SetMotorDirection(DRIVE_PITCH, can_data);
+		SetMotorDirection(DRIVE1, can_data);
 
-		if (motorss.motors[DRIVE_PITCH].direction != DIR_STOP) {
+		if (motorss.motors[DRIVE1].direction != DIR_STOP) {
 			motor_pitch_on = 1;
 		} else {
 			motor_pitch_on = 0;
@@ -875,7 +875,7 @@ void ProcessCanMessage()
 	}
 	else if (pRxHeader.StdId == CAN_ID_CMD_MARIO_MAST_DIRECTION)
 	{
-		SetMotorDirection(DRIVE_MAST, can_data);
+		SetMotorDirection(DRIVE1, can_data);
 	}
 	//
 	// MARIO Automatic motor commands
@@ -1057,6 +1057,7 @@ HAL_StatusTypeDef TransmitCAN(uint32_t id, uint8_t* buf, uint8_t size, uint8_t w
   */
 int main(void)
 {
+
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
@@ -1080,15 +1081,11 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_CAN1_Init();
-  MX_I2C1_Init();
-  MX_I2C3_Init();
   MX_SPI1_Init();
-  MX_USART2_UART_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
   MX_TIM4_Init();
   MX_TIM5_Init();
-  MX_TIM3_Init();
   MX_TIM6_Init();
   MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
@@ -1126,6 +1123,7 @@ void SystemClock_Config(void)
   */
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE2);
+
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
@@ -1143,6 +1141,7 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+
   /** Initializes the CPU, AHB and APB buses clocks
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
@@ -1298,74 +1297,6 @@ static void MX_CAN1_Init(void)
 }
 
 /**
-  * @brief I2C1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_I2C1_Init(void)
-{
-
-  /* USER CODE BEGIN I2C1_Init 0 */
-
-  /* USER CODE END I2C1_Init 0 */
-
-  /* USER CODE BEGIN I2C1_Init 1 */
-
-  /* USER CODE END I2C1_Init 1 */
-  hi2c1.Instance = I2C1;
-  hi2c1.Init.ClockSpeed = 100000;
-  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
-  hi2c1.Init.OwnAddress1 = 0;
-  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c1.Init.OwnAddress2 = 0;
-  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN I2C1_Init 2 */
-
-  /* USER CODE END I2C1_Init 2 */
-
-}
-
-/**
-  * @brief I2C3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_I2C3_Init(void)
-{
-
-  /* USER CODE BEGIN I2C3_Init 0 */
-
-  /* USER CODE END I2C3_Init 0 */
-
-  /* USER CODE BEGIN I2C3_Init 1 */
-
-  /* USER CODE END I2C3_Init 1 */
-  hi2c3.Instance = I2C3;
-  hi2c3.Init.ClockSpeed = 100000;
-  hi2c3.Init.DutyCycle = I2C_DUTYCYCLE_2;
-  hi2c3.Init.OwnAddress1 = 0;
-  hi2c3.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
-  hi2c3.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
-  hi2c3.Init.OwnAddress2 = 0;
-  hi2c3.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  hi2c3.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
-  if (HAL_I2C_Init(&hi2c3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN I2C3_Init 2 */
-
-  /* USER CODE END I2C3_Init 2 */
-
-}
-
-/**
   * @brief SPI1 Initialization Function
   * @param None
   * @retval None
@@ -1384,11 +1315,11 @@ static void MX_SPI1_Init(void)
   hspi1.Instance = SPI1;
   hspi1.Init.Mode = SPI_MODE_MASTER;
   hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_16BIT;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_128;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -1417,8 +1348,6 @@ static void MX_TIM1_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
 
   /* USER CODE BEGIN TIM1_Init 1 */
 
@@ -1439,35 +1368,9 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
-  {
-    Error_Handler();
-  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
-  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
-  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
-  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
-  sBreakDeadTimeConfig.DeadTime = 0;
-  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
-  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
-  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
-  if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
   {
     Error_Handler();
   }
@@ -1476,7 +1379,6 @@ static void MX_TIM1_Init(void)
   // HAL_TIM_PWM_Start(&htim1, channel);
 
   /* USER CODE END TIM1_Init 2 */
-  HAL_TIM_MspPostInit(&htim1);
 
 }
 
@@ -1494,7 +1396,6 @@ static void MX_TIM2_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
 
   /* USER CODE BEGIN TIM2_Init 1 */
 
@@ -1514,87 +1415,15 @@ static void MX_TIM2_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
-  {
-    Error_Handler();
-  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
-  {
-    Error_Handler();
-  }
   /* USER CODE BEGIN TIM2_Init 2 */
 
   /* USER CODE END TIM2_Init 2 */
-  HAL_TIM_MspPostInit(&htim2);
-
-}
-
-/**
-  * @brief TIM3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM3_Init(void)
-{
-
-  /* USER CODE BEGIN TIM3_Init 0 */
-
-  /* USER CODE END TIM3_Init 0 */
-
-  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-
-  /* USER CODE BEGIN TIM3_Init 1 */
-
-  /* USER CODE END TIM3_Init 1 */
-  htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 48;
-  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 500;
-  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM3_Init 2 */
-
-  /* USER CODE END TIM3_Init 2 */
-  HAL_TIM_MspPostInit(&htim3);
 
 }
 
@@ -1767,39 +1596,6 @@ static void MX_TIM7_Init(void)
 }
 
 /**
-  * @brief USART2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART2_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART2_Init 0 */
-
-  /* USER CODE END USART2_Init 0 */
-
-  /* USER CODE BEGIN USART2_Init 1 */
-
-  /* USER CODE END USART2_Init 1 */
-  huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
-  huart2.Init.WordLength = UART_WORDLENGTH_8B;
-  huart2.Init.StopBits = UART_STOPBITS_1;
-  huart2.Init.Parity = UART_PARITY_NONE;
-  huart2.Init.Mode = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART2_Init 2 */
-
-  /* USER CODE END USART2_Init 2 */
-
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -1807,6 +1603,8 @@ static void MX_USART2_UART_Init(void)
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
+/* USER CODE BEGIN MX_GPIO_Init_1 */
+/* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOE_CLK_ENABLE();
@@ -1816,8 +1614,9 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOE, FT_RESET_Pin|SPI_CS2_Pin|SPI_CS1_Pin|DIR1_Pin
-                          |STEP1_Pin|RESET1_Pin|nSLEEP1_Pin|STEP2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOE, FT_RESET_Pin|SPI_CS2_Pin|SPI_CS1_Pin|BIN2_1_Pin
+                          |BIN1_1_Pin|DIR1_Pin|STEP1_Pin|RESET1_Pin
+                          |nSLEEP1_Pin|STEP2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, BIN2_2_Pin|BIN1_2_Pin|DIR2_Pin|nSLEEP2_Pin
@@ -1833,13 +1632,20 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : FT_RESET_Pin SPI_CS2_Pin SPI_CS1_Pin DIR1_Pin
+  /*Configure GPIO pins : FT_RESET_Pin BIN2_1_Pin BIN1_1_Pin DIR1_Pin
                            STEP1_Pin RESET1_Pin nSLEEP1_Pin STEP2_Pin */
-  GPIO_InitStruct.Pin = FT_RESET_Pin|SPI_CS2_Pin|SPI_CS1_Pin|DIR1_Pin
+  GPIO_InitStruct.Pin = FT_RESET_Pin|BIN2_1_Pin|BIN1_1_Pin|DIR1_Pin
                           |STEP1_Pin|RESET1_Pin|nSLEEP1_Pin|STEP2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : SPI_CS2_Pin SPI_CS1_Pin */
+  GPIO_InitStruct.Pin = SPI_CS2_Pin|SPI_CS1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /*Configure GPIO pins : BIN2_2_Pin BIN1_2_Pin DIR2_Pin nSLEEP2_Pin
@@ -1876,6 +1682,8 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
+/* USER CODE BEGIN MX_GPIO_Init_2 */
+/* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
@@ -1934,4 +1742,3 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
-
