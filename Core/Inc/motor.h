@@ -45,6 +45,7 @@ enum DRIVE_STATUS
 //extern uint8_t gpio_pin_value;
 
 extern uint8_t flag_drive_fault;
+extern uint8_t motor_pitch_on;
 
 void InitDrives();
 
@@ -59,10 +60,9 @@ void DriveSleep(DRIVE_MOTOR drive_index);
 void DriveWakeUp(DRIVE_MOTOR drive_index);
 uint32_t IsDriveAwake(DRIVE_MOTOR drive_index);
 
-void SetDirection(DRIVE_MOTOR drive_index, uint32_t direction);
 
-void EnableDriveIndexer(DRIVE_MOTOR drive_index);
-void EnableDriveExternalPWM(DRIVE_MOTOR drive_index);
+void StepDrive(DRIVE_MOTOR drive_index);
+void DirectionDrive(DRIVE_MOTOR drive_index, uint8_t dir);
 
 void better_step_function();
 

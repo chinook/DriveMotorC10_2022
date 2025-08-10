@@ -158,16 +158,16 @@ typedef struct {
 
 DRV8711_REGS drive_regs[DRIVE_MOTOR_NUM];
 
-uint32_t drive_status[DRIVE_MOTOR_NUM] = { DRIVE_AWAKE, DRIVE_AWAKE };
+uint8_t motor_pitch_on = 0;
 
 void InitDriveMotor(DRIVE_MOTOR drive_index);
 void InitRegValuesStepper(DRIVE_MOTOR drive_index);
 void SendDriveRegisters(DRIVE_MOTOR drive_index);
 void ReadAndVerifyDriveRegisters(DRIVE_MOTOR drive_index);
-void CheckDriveStatusRegister(DRIVE_MOTOR drive_index);
+uint16_t CheckDriveStatusRegister(DRIVE_MOTOR drive_index);
 
 void TransmitSPI(DRIVE_MOTOR drive_index, uint16_t data);
-void WriteSPI(DRIVE_MOTOR drive_index, uint8_t reg);
+void WriteSPI(DRIVE_MOTOR drive_index, uint8_t reg, uint16_t reg_config);
 uint16_t ReadSPI(DRIVE_MOTOR drive_index, uint8_t reg);
 
 uint16_t TransmitReceiveSPI(DRIVE_MOTOR drive_index, uint16_t data);
@@ -200,17 +200,21 @@ void InitDriveMotor(DRIVE_MOTOR drive_index) {
 	// Reset drive
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_RESET],
 			drive_pins[drive_index][DRIVE_RESET], GPIO_PIN_SET);
-	HAL_Delay(10);
+	HAL_Delay(1);
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_RESET],
 			drive_pins[drive_index][DRIVE_RESET], GPIO_PIN_RESET);
 
 	// Disable sleeping
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_SLEEP],
 			drive_pins[drive_index][DRIVE_SLEEP], GPIO_PIN_SET);
+	HAL_Delay(2);
+	HAL_Delay(13);
 
 	// CS à LOW
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
 			drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+
+	HAL_Delay(100);
 
 	// init register for a stepper motor
 	InitRegValuesStepper(drive_index);
@@ -222,13 +226,15 @@ void InitDriveMotor(DRIVE_MOTOR drive_index) {
 	// Verify if chip setup is good
 	ReadAndVerifyDriveRegisters(drive_index);
 
+	CheckDriveStatusRegister(drive_index);
 }
 
 // Send every register to the drive
 void SendDriveRegisters(DRIVE_MOTOR drive_index) {
 	// Écrire tous les registres sauf STATUS (registre 0x07)
 	for (uint8_t reg = 0; reg < NUM_DRIVE_REGS - 1; reg++) {
-		WriteSPI(drive_index, reg);
+		uint16_t reg_config = ReadRegConfig(drive_index, reg);
+		WriteSPI(drive_index, reg, reg_config);
 	}
 }
 
@@ -242,7 +248,7 @@ void ReadAndVerifyDriveRegisters(DRIVE_MOTOR drive_index) {
 
 			uint16_t expected_data = ReadRegConfig(drive_index, reg);
 			if ((reg == 1) && (expected_data & 0x0300)) { // datasheet bit 10 on register 1 always return 0
-				expected_data = expected_data &0xFBFF;
+				expected_data = expected_data & 0xFBFF;
 			}
 
 			if (received_data != expected_data) {
@@ -255,9 +261,7 @@ void ReadAndVerifyDriveRegisters(DRIVE_MOTOR drive_index) {
 	}
 }
 
-void WriteSPI(DRIVE_MOTOR drive_index, uint8_t reg) {
-	uint16_t reg_config = ReadRegConfig(drive_index, reg);
-
+void WriteSPI(DRIVE_MOTOR drive_index, uint8_t reg, uint16_t reg_config) {
 	uint16_t data = (reg << 12) & 0x7000; //registre
 	data = data | (reg_config & 0x0FFF); //config
 	data = data & 0x7FFF; //écriture
@@ -322,11 +326,14 @@ uint16_t TransmitReceiveSPI(DRIVE_MOTOR drive_index, uint16_t data) {
 	uint8_t reg_test = (data & 0x7000) >> 12;
 	uint16_t expected_data_test = ReadRegConfig(drive_index, reg_test);
 	if ((reg_test == 1) && (expected_data_test & 0x0300)) { // datasheet bit 10 on register 1 always return 0
-		expected_data_test = expected_data_test &0xFBFF;
+		expected_data_test = expected_data_test & 0xFBFF;
+	}
+	if ((reg_test == 0) && (expected_data_test & 0x0002)) { // datasheet bit 2 on register 0 clear after write
+		expected_data_test = expected_data_test & 0xFFFD;
 	}
 
 	if (received_data != expected_data_test) {
-		HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
+		//HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
 		//flag_drive_fault = 1;
 	}
 
@@ -431,201 +438,172 @@ uint16_t ReadRegConfig(DRIVE_MOTOR drive_index, uint8_t reg) {
  *   → Tous les autres bits = 0 → pas de défaut détecté sur les ponts A/B
  */
 uint8_t flag_drive_fault = 0;
-void CheckDriveStatusRegister(DRIVE_MOTOR drive_index) {
+uint16_t CheckDriveStatusRegister(DRIVE_MOTOR drive_index) {
 	uint16_t status = ReadSPI(drive_index, 7);
 
-// Récupérer les bits d’état (seuls les bits 15–8 comptent)
-	uint8_t status_flags = (status >> 8) & 0xFF;
-
-	if (status_flags != 0x00) {
+	if (status != 0x0000) {
 		// Une ou plusieurs erreurs détectées → flag drive en faute
 		flag_drive_fault = 1;
+		return 1;
 	} else {
 		// Pas d'erreur
 		flag_drive_fault = 0;
+		return 0;
 	}
 }
 
 void EnableDrive(DRIVE_MOTOR drive_index) {
-// Préparer le registre
+	if (CheckDriveStatusRegister(drive_index) != 0) {
+		return;
+	}
+
+	uint16_t reg_config = ReadRegConfig(drive_index, 0);
+	reg_config = reg_config | 0x0001;
+
+	WriteSPI(drive_index, 0, reg_config);
+
+	if (CheckDriveStatusRegister(drive_index) != 0) {
+		return;
+	}
+
 	drive_regs[drive_index].ctrl_reg.enbl = 1;
 
-// CS à LOW avant la transmission
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-			drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
-
-// Envoyer le registre CTRL
-//TransmitMotorSPI(drive_index, DRV8711_CTRL_REG);
-
-// CS à HIGH après la transmission
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-			drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+	ReadAndVerifyDriveRegisters(drive_index);
+	//reg_config = ReadRegConfig(drive_index, 0);
+	//return;
 }
 
 void DisableDrive(DRIVE_MOTOR drive_index) {
-// Désactive l'étage de puissance logiciellement
+	if (CheckDriveStatusRegister(drive_index) != 0) {
+		return;
+	}
+
+	uint16_t reg_config = ReadRegConfig(drive_index, 0);
+	reg_config = reg_config & 0xFFFD;
+
+	WriteSPI(drive_index, 0, reg_config);
+
+	if (CheckDriveStatusRegister(drive_index) != 0) {
+		return;
+	}
+
 	drive_regs[drive_index].ctrl_reg.enbl = 0;
 
-// Activer la communication SPI (CS = LOW)
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-			drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
+	ReadAndVerifyDriveRegisters(drive_index);
+	//reg_config = ReadRegConfig(drive_index, 0);
+	//return;
+}
 
-// Envoyer le registre CTRL avec ENBL = 0
-//TransmitMotorSPI(drive_index, DRV8711_CTRL_REG);
+void StepDrive(DRIVE_MOTOR drive_index) {
+	if (CheckDriveStatusRegister(drive_index) != 0) {
+		return;
+	}
 
-// Terminer la communication SPI (CS = HIGH)
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-			drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
+	uint16_t reg_config = ReadRegConfig(drive_index, 0);
+	reg_config = reg_config | 0x0004;
+
+	WriteSPI(drive_index, 0, reg_config);
+
+	if (CheckDriveStatusRegister(drive_index) != 0) {
+		return;
+	}
+}
+
+void DirectionDrive(DRIVE_MOTOR drive_index, uint8_t dir) {
+	if (CheckDriveStatusRegister(drive_index) != 0) {
+		return;
+	}
+	uint16_t reg_config = ReadRegConfig(drive_index, 0);
+
+	if (dir == 0) {
+		reg_config = reg_config & 0xFFFD;
+		drive_regs[drive_index].ctrl_reg.rdir = 0;
+	} else if (dir == 1) {
+		reg_config = reg_config | 0x0002;
+		drive_regs[drive_index].ctrl_reg.rdir = 1;
+	} else {
+		return;
+	}
+
+	WriteSPI(drive_index, 0, reg_config);
+
+	if (CheckDriveStatusRegister(drive_index) != 0) {
+		return;
+	}
+
+	ReadAndVerifyDriveRegisters(drive_index);
 }
 
 void ResetDrive(DRIVE_MOTOR drive_index) {
+	// Reset drive
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_RESET],
 			drive_pins[drive_index][DRIVE_RESET], GPIO_PIN_SET);
-	HAL_Delay(10);
+	HAL_Delay(100);
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_RESET],
 			drive_pins[drive_index][DRIVE_RESET], GPIO_PIN_RESET);
-}
 
-void DriveSleep(DRIVE_MOTOR drive_index) {
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_SLEEP],
-			drive_pins[drive_index][DRIVE_SLEEP], GPIO_PIN_RESET);
-	drive_status[drive_index] = DRIVE_ASLEEP;
-}
-
-void DriveWakeUp(DRIVE_MOTOR drive_index) {
+	// Disable sleeping
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_SLEEP],
 			drive_pins[drive_index][DRIVE_SLEEP], GPIO_PIN_SET);
-	drive_status[drive_index] = DRIVE_AWAKE;
 }
 
-uint32_t IsDriveAwake(DRIVE_MOTOR drive_index) {
-	return drive_status[drive_index];
-}
-
-void SetDirection(DRIVE_MOTOR drive_index, uint32_t direction) {
-	GPIO_PinState state = (direction == DIR_LEFT) ? 1 : 0;
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_DIR],
-			drive_pins[drive_index][DRIVE_DIR], state);
-}
-
-void EnableDriveIndexer(DRIVE_MOTOR drive_index) {
-	drive_regs[drive_index].off_reg.pwmmode = 0;		// Use internal indexer
-
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-			drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
-//TransmitMotorSPI(drive_index, DRV8711_OFF_REG);
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-			drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
-}
-
-uint32_t multiplicator_slowing_motor = 0;
-uint32_t speed_stepper_motor_pitch_int_converted = 40; //in multiple of 50us
-uint8_t gpio_pin_value = 0;
-//fonctionne avec un timer d'un multiple de la vitesse maximale
-//better_step_function() s'exécute tous les 2ms
-//vitesse max 500kHz, soit multiplicator_slowing_motor > stepper_motor_pitch où stepper_motor_pitch = 40 (50us*40=2ms)
+uint32_t counter = 0;
+//s'exécute au 1us
 void better_step_function() {
-	return 0;
-
-	if (speed_stepper_motor_pitch >= 100) {
-		speed_stepper_motor_pitch_int_converted = 40;
-	} else {
-		speed_stepper_motor_pitch_int_converted = (uint32_t) (1
-				/ (float) ((float) speed_stepper_motor_pitch / 100));
-	}
-	if (speed_stepper_motor_pitch_int_converted < 40)
-		speed_stepper_motor_pitch_int_converted = 40; //sécurité sinon moteur bloque et besoin de HARD RESET toute la boite élé
-
-	if (multiplicator_slowing_motor
-			<= speed_stepper_motor_pitch_int_converted) {
-		multiplicator_slowing_motor++;
-	} else {
-		multiplicator_slowing_motor = 0;
+	if (counter >= 10000) { //0
+		counter = 0;
 		if (motor_pitch_on == 1) {
-			if (gpio_pin_value == 0) {
-				gpio_pin_value = 1;
-				HAL_GPIO_WritePin(drive_ports[DRIVE2][DRIVE_STEP],
-						drive_pins[DRIVE2][DRIVE_STEP], GPIO_PIN_SET);
-			} else if (gpio_pin_value == 1) {
-				gpio_pin_value = 0;
-				HAL_GPIO_WritePin(drive_ports[DRIVE2][DRIVE_STEP],
-						drive_pins[DRIVE2][DRIVE_STEP], GPIO_PIN_RESET);
-			}
+			HAL_GPIO_WritePin(drive_ports[DRIVE1][DRIVE_STEP],
+					drive_pins[DRIVE1][DRIVE_STEP], GPIO_PIN_SET);
 		}
+	} else if (counter == 3) {
+		counter++;
+		if (motor_pitch_on == 1) {
+			HAL_GPIO_WritePin(drive_ports[DRIVE1][DRIVE_STEP],
+					drive_pins[DRIVE1][DRIVE_STEP], GPIO_PIN_RESET);
+		}
+	} else {
+		counter++;
 	}
 }
 
-void EnableDriveExternalPWM(DRIVE_MOTOR drive_index) {
-	drive_regs[drive_index].off_reg.pwmmode = 1;		// Use external PWM
+/*
+ uint32_t multiplicator_slowing_motor = 0;
+ uint32_t speed_stepper_motor_pitch_int_converted = 40; //in multiple of 50us
+ uint8_t gpio_pin_value = 0;
+ //fonctionne avec un timer d'un multiple de la vitesse maximale
+ //better_step_function() s'exécute tous les 2ms
+ //vitesse max 500kHz, soit multiplicator_slowing_motor > stepper_motor_pitch où stepper_motor_pitch = 40 (50us*40=2ms)
+ void better_step_function() {
+ return 0;
 
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-			drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
-//TransmitMotorSPI(drive_index, DRV8711_OFF_REG);
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-			drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
-}
+ if (speed_stepper_motor_pitch >= 100) {
+ speed_stepper_motor_pitch_int_converted = 40;
+ } else {
+ speed_stepper_motor_pitch_int_converted = (uint32_t) (1
+ / (float) ((float) speed_stepper_motor_pitch / 100));
+ }
+ if (speed_stepper_motor_pitch_int_converted < 40)
+ speed_stepper_motor_pitch_int_converted = 40; //sécurité sinon moteur bloque et besoin de HARD RESET toute la boite élé
 
-void DEBUG_SPI(DRIVE_MOTOR drive_index) {
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-			drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
-
-//TransmitMotorSPI(drive_index, 0);
-
-	uint8_t tx_data = 0x70 | 0x80;
-	HAL_SPI_Transmit(hspi, &tx_data, 1, HAL_MAX_DELAY);
-	uint8_t rx_data;
-	HAL_SPI_Receive(hspi, &rx_data, 1, HAL_MAX_DELAY);
-
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-			drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
-}
-
-void DEBUG_SPI_CHATGPT(DRIVE_MOTOR drive_index) {
-// Sélectionner le DRV8711 (CS = LOW)
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-			drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
-
-// Étape 1 : envoyer la commande de lecture du registre 0x07 (STATUS)
-	uint8_t tx_cmd[2] = { 0xF0, 0x00 };  // 0xF000 = lecture du registre 0x07
-	uint8_t rx_dummy[2] = { 0 };
-
-	HAL_SPI_TransmitReceive(hspi, tx_cmd, rx_dummy, 2, HAL_MAX_DELAY);
-
-// Désélectionner momentanément (important selon le timing du DRV8711)
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-			drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
-	HAL_Delay(1); // Petit délai si nécessaire
-
-// Réactiver CS pour lire la vraie donnée
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-			drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
-
-	uint8_t tx_dummy[2] = { 0x00, 0x00 };
-	uint8_t rx_data[2] = { 0 };
-
-	HAL_SPI_TransmitReceive(hspi, tx_dummy, rx_data, 2, HAL_MAX_DELAY);
-
-// Désélection finale du périphérique
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
-			drive_pins[drive_index][DRIVE_CS], GPIO_PIN_SET);
-
-// Recomposer les 16 bits reçus
-	uint16_t result = (rx_data[0] << 8) | rx_data[1];
-
-// Affichage debug via UART ou autre
-	printf("DRV8711[%d] STATUS = 0x%04X\r\n", drive_index, result);
-
-	if (result & (1 << 0))
-		printf("  OCP: Overcurrent\n");
-	if (result & (1 << 1))
-		printf("  UVLO: Undervoltage\n");
-	if (result & (1 << 2))
-		printf("  OTS: Overtemp\n");
-	if (result & (1 << 3))
-		printf("  PDF: Power Fault\n");
-	if (result & (1 << 4))
-		printf("  STDLAT: Stall Latch\n");
-}
+ if (multiplicator_slowing_motor
+ <= speed_stepper_motor_pitch_int_converted) {
+ multiplicator_slowing_motor++;
+ } else {
+ multiplicator_slowing_motor = 0;
+ if (motor_pitch_on == 1) {
+ if (gpio_pin_value == 0) {
+ gpio_pin_value = 1;
+ HAL_GPIO_WritePin(drive_ports[DRIVE2][DRIVE_STEP],
+ drive_pins[DRIVE2][DRIVE_STEP], GPIO_PIN_SET);
+ } else if (gpio_pin_value == 1) {
+ gpio_pin_value = 0;
+ HAL_GPIO_WritePin(drive_ports[DRIVE2][DRIVE_STEP],
+ drive_pins[DRIVE2][DRIVE_STEP], GPIO_PIN_RESET);
+ }
+ }
+ }
+ } */
 
 void InitRegValuesStepperDefault(DRIVE_MOTOR drive_index) {
 //
@@ -781,11 +759,11 @@ void InitRegValuesStepper(DRIVE_MOTOR drive_index) {
 // EXTSTALL : 0 = Stall détecté en interne, 1 = via pin externe
 // Par défaut DRV8711 : 0
 
-	drive_regs[drive_index].ctrl_reg.isgain = 0b01;
+	drive_regs[drive_index].ctrl_reg.isgain = 0b10;
 // ISGAIN : Gain du senseur de courant (00 = 5, 01 = 10, 10 = 20, 11 = 40)
 // Par défaut DRV8711 : 0b00 (gain de 5)
 
-	drive_regs[drive_index].ctrl_reg.dtime = 0b00;
+	drive_regs[drive_index].ctrl_reg.dtime = 0b11;
 // DTIME : Dead time entre les switches du pont H (00 = 850ns)
 // Par défaut DRV8711 : 0b00
 
@@ -794,11 +772,11 @@ void InitRegValuesStepper(DRIVE_MOTOR drive_index) {
 // Détermine le courant de phase appliqué
 //
 //drive_regs[drive_index].torque_reg.torque = 24; // 100% de puissance avec isgain à 10
-	drive_regs[drive_index].torque_reg.torque = 12; // 50% de puissance avec isgain à 10
+	drive_regs[drive_index].torque_reg.torque = 0x50; // 50% de puissance avec isgain à 10
 // TORQUE : Niveau de couple (0–255), proportionnel au courant de sortie
 // Par défaut DRV8711 : 0xFF (255)
 
-	drive_regs[drive_index].torque_reg.smplth = 0b111;
+	drive_regs[drive_index].torque_reg.smplth = 0b001;
 // SMPLTH : Durée du seuil BEMF pour la détection de blocage
 // Par défaut DRV8711 : 0b000
 
@@ -806,11 +784,11 @@ void InitRegValuesStepper(DRIVE_MOTOR drive_index) {
 // ───── OFF REGISTER (0x02) ──────────────────────────────────────────────
 // Temps d’arrêt de PWM et mode PWM
 //
-	drive_regs[drive_index].off_reg.toff = 0x80;
+	drive_regs[drive_index].off_reg.toff = 0x28;
 // TOFF : Temps mort (0 = désactivé, >0 = en pas de 500ns)
 // Par défaut DRV8711 : 0x30 (24 = 12 µs)
 
-	drive_regs[drive_index].off_reg.pwmmode = 1;
+	drive_regs[drive_index].off_reg.pwmmode = 0;
 // PWMMODE : 0 = interne (indexeur), 1 = externe (STEP/DIR)
 // Par défaut DRV8711 : 0
 
@@ -822,7 +800,7 @@ void InitRegValuesStepper(DRIVE_MOTOR drive_index) {
 // TBLANK : Masque de courant (en pas de 20ns) — 0x80 = 2.56 µs
 // Par défaut DRV8711 : 0x80
 
-	drive_regs[drive_index].blank_reg.abt = 0;
+	drive_regs[drive_index].blank_reg.abt = 1;
 // ABT : Adaptive Blanking Time (0 = désactivé, 1 = activé)
 // Par défaut DRV8711 : 0
 
@@ -830,11 +808,11 @@ void InitRegValuesStepper(DRIVE_MOTOR drive_index) {
 // ───── DECAY REGISTER (0x04) ────────────────────────────────────────────
 // Contrôle le mode de "décroissance" du courant moteur
 //
-	drive_regs[drive_index].decay_reg.tdecay = 0x80;
+	drive_regs[drive_index].decay_reg.tdecay = 0x10; //0x80
 // TDECAY : temps avant transition entre fast et slow decay (500ns steps)
 // Par défaut DRV8711 : 0x10 (8 µs)
 
-	drive_regs[drive_index].decay_reg.decmod = 0b000;
+	drive_regs[drive_index].decay_reg.decmod = 0b100; //0b000
 // DECMOD : 000 = slow decay forcé, 001 = fast, 010 = mixed decay
 // Par défaut DRV8711 : 0b010 (mixed decay)
 
@@ -842,11 +820,11 @@ void InitRegValuesStepper(DRIVE_MOTOR drive_index) {
 // ───── STALL REGISTER (0x05) ────────────────────────────────────────────
 // Détection de blocage moteur (optionnel)
 //
-	drive_regs[drive_index].stall_reg.sdthr = 0xFF;
+	drive_regs[drive_index].stall_reg.sdthr = 0xFF; //0xFF
 // SDTHR : Seuil de BEMF pour détecter un blocage
 // Par défaut DRV8711 : 0x40
 
-	drive_regs[drive_index].stall_reg.sdcnt = 0b11;
+	drive_regs[drive_index].stall_reg.sdcnt = 0b10; //0b11
 // SDCNT : nombre de pas requis avant détection (00 = 2, ..., 11 = 8 pas)
 // Par défaut DRV8711 : 0b00
 
@@ -858,25 +836,29 @@ void InitRegValuesStepper(DRIVE_MOTOR drive_index) {
 // ───── DRIVE REGISTER (0x06) ────────────────────────────────────────────
 // Réglage de la puissance des transistors MOSFET (gate drive)
 //
-	drive_regs[drive_index].drive_reg.ocpth = 0b11;
+	drive_regs[drive_index].drive_reg.ocpth = 0b01;
 // OCPTH : Seuil de détection de surintensité (00 = 250mV, 11 = 2000mV)
 // Par défaut DRV8711 : 0b01 (500mV)
 
-	drive_regs[drive_index].drive_reg.ocpdeg = 0b11;
+	drive_regs[drive_index].drive_reg.ocpdeg = 0b10;
 // OCPDEG : Temps de filtrage de la surintensité (00 = 1 µs, 11 = 8 µs)
 // Par défaut DRV8711 : 0b00
 
-	drive_regs[drive_index].drive_reg.tdriven = 0b11;
+	drive_regs[drive_index].drive_reg.tdriven = 0b01; //0b11
 // TDRIVEN : Durée de l’impulsion LOW-SIDE (00 = 250ns, 11 = 500ns)
 // Par défaut DRV8711 : 0b00
 
-	drive_regs[drive_index].drive_reg.tdrivep = 0b11;
+	drive_regs[drive_index].drive_reg.tdrivep = 0b01; //0b11
 // TDRIVEP : Durée de l’impulsion HIGH-SIDE (00 = 250ns, 11 = 500ns)
 // Par défaut DRV8711 : 0b00
 
-	drive_regs[drive_index].drive_reg.idriven = 0b11;
+	drive_regs[drive_index].drive_reg.idriven = 0b10; //0b11
 // IDRIVEP : Courant de crête HIGH-SIDE (00 = 20mA, 11 = 150mA)
 // Par défaut DRV8711 : 0b00
+
+	drive_regs[drive_index].drive_reg.idrivep = 0b10;
+	// IDRIVEP : Courant de crête HIGH-SIDE (00 = 20mA, 11 = 150mA)
+	// Par défaut DRV8711 : 0b10
 }
 
 /*
