@@ -160,14 +160,18 @@ DRV8711_REGS drive_regs[DRIVE_MOTOR_NUM];
 
 uint8_t motor_pitch_on = 0;
 
+uint32_t spi_error = 0;
+uint32_t hal_spi_transmit_error = 0;
+uint32_t hal_spi_transmitreceive_error = 0;
+
 void InitDriveMotor(DRIVE_MOTOR drive_index);
 void InitRegValuesStepper(DRIVE_MOTOR drive_index);
 void SendDriveRegisters(DRIVE_MOTOR drive_index);
 void ReadAndVerifyDriveRegisters(DRIVE_MOTOR drive_index);
-uint16_t CheckDriveStatusRegister(DRIVE_MOTOR drive_index);
+uint8_t CheckDriveStatusRegister(DRIVE_MOTOR drive_index);
 
 void TransmitSPI(DRIVE_MOTOR drive_index, uint16_t data);
-void WriteSPI(DRIVE_MOTOR drive_index, uint8_t reg, uint16_t reg_config);
+uint32_t WriteSPI(DRIVE_MOTOR drive_index, uint8_t reg, uint16_t reg_config);
 uint16_t ReadSPI(DRIVE_MOTOR drive_index, uint8_t reg);
 
 uint16_t TransmitReceiveSPI(DRIVE_MOTOR drive_index, uint16_t data);
@@ -180,20 +184,10 @@ void InitRegValuesStepperDefault(DRIVE_MOTOR drive_index);
 SPI_HandleTypeDef *hspi = &hspi1;
 
 void InitDrives() {
-	/*
-	 pwm1_timer = htim_pwm1;
-	 pwm2_timer = htim_pwm2;
-	 pwm1_channel = channel_pwm1;
-	 pwm2_channel = channel_pwm2;
-
-	 pwm_timers[0] = pwm1_timer;
-	 pwm_timers[1] = pwm2_timer;
-	 pwm_channels[0] = pwm1_channel;
-	 pwm_channels[1] = pwm2_channel;
-	 */
 	UnselectDriveCS();
-	//InitDriveMotor(DRIVE1);
+
 	InitDriveMotor(DRIVE1);
+	//InitDriveMotor(DRIVE2);
 }
 
 void InitDriveMotor(DRIVE_MOTOR drive_index) {
@@ -203,22 +197,20 @@ void InitDriveMotor(DRIVE_MOTOR drive_index) {
 	HAL_Delay(1);
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_RESET],
 			drive_pins[drive_index][DRIVE_RESET], GPIO_PIN_RESET);
-
 	// Disable sleeping
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_SLEEP],
 			drive_pins[drive_index][DRIVE_SLEEP], GPIO_PIN_SET);
-	HAL_Delay(2);
-	HAL_Delay(13);
-
 	// CS à LOW
 	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_CS],
 			drive_pins[drive_index][DRIVE_CS], GPIO_PIN_RESET);
 
-	HAL_Delay(100);
+	HAL_Delay(5); //wait for everything to setup : DRV8711 recommend 1ms
 
 	// init register for a stepper motor
 	InitRegValuesStepper(drive_index);
-	//InitRegValuesStepperDefault(drive_index);
+
+	//seulement pour debug SPI : ne pas utiliser pour tester un moteur
+	//InitRegValuesStepperDefault(drive_index); //WARNING : TORQUE IS SET TO MAXIMUM
 
 	// Send regs over SPI
 	SendDriveRegisters(drive_index);
@@ -241,43 +233,36 @@ void SendDriveRegisters(DRIVE_MOTOR drive_index) {
 void ReadAndVerifyDriveRegisters(DRIVE_MOTOR drive_index) {
 	uint8_t error_detected = 0;
 
-	for (uint8_t i = 0; i < 255; i++) {
-		for (uint8_t reg = NUM_DRIVE_REGS - 2; reg < NUM_DRIVE_REGS - 1;
-				reg--) { // Skip STATUS (0x07)
-			uint16_t received_data = ReadSPI(drive_index, reg);
+	for (uint8_t reg = 0; reg < NUM_DRIVE_REGS - 1; reg++) { // Skip STATUS (0x07)
+		uint16_t received_data = ReadSPI(drive_index, reg);
+		uint16_t expected_data = ReadRegConfig(drive_index, reg);
 
-			uint16_t expected_data = ReadRegConfig(drive_index, reg);
-			if ((reg == 1) && (expected_data & 0x0300)) { // datasheet bit 10 on register 1 always return 0
-				expected_data = expected_data & 0xFBFF;
-			}
-
-			if (received_data != expected_data) {
-				HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin,
-						GPIO_PIN_SET);
-				flag_drive_fault = 1;
-				error_detected += 1;
-			}
+		if (received_data != expected_data) {
+			HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
+			error_detected += 1;
 		}
 	}
 }
 
-void WriteSPI(DRIVE_MOTOR drive_index, uint8_t reg, uint16_t reg_config) {
+uint32_t WriteSPI(DRIVE_MOTOR drive_index, uint8_t reg, uint16_t reg_config) {
 	uint16_t data = (reg << 12) & 0x7000; //registre
 	data = data | (reg_config & 0x0FFF); //config
 	data = data & 0x7FFF; //écriture
+	uint16_t expected_data = data & 0x0FFF;
 
 	TransmitSPI(drive_index, data);
+	uint16_t received_data = ReadSPI(drive_index, reg);
 
-	ReadSPI(drive_index, reg);
-}
-
-uint16_t ReadSPI(DRIVE_MOTOR drive_index, uint8_t reg) {
-	// Construire la commande de lecture : bit 15 = 1, reg sur bits 14–12
-	uint16_t read_cmd = (1 << 15) | (reg << 12);
-
-	uint16_t received_data = TransmitReceiveSPI(drive_index, read_cmd);
-
-	return received_data;
+	if (received_data != expected_data) {
+		TransmitSPI(drive_index, data);
+		received_data = ReadSPI(drive_index, reg);
+		if (received_data != expected_data) {
+			HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
+			spi_error++;
+			return spi_error;
+		}
+	}
+	return 0;
 }
 
 void TransmitSPI(DRIVE_MOTOR drive_index, uint16_t data) {
@@ -291,13 +276,32 @@ void TransmitSPI(DRIVE_MOTOR drive_index, uint16_t data) {
 	SelectDriveCS(drive_index);
 
 	// Transmettre le message
-	if (HAL_SPI_Transmit(hspi, tx_data, 2, HAL_MAX_DELAY) != HAL_OK) {
+	uint8_t err = HAL_SPI_Transmit(hspi, tx_data, 2, HAL_MAX_DELAY);
+	if (err != HAL_OK) {
 		// SPI erreur → allumer LED de diagnostic
 		HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
+		hal_spi_transmit_error++;
 	}
 
 	// Désélectionner les puces (CS à LOW après la transmission)
 	UnselectDriveCS();
+}
+
+uint16_t ReadSPI(DRIVE_MOTOR drive_index, uint8_t reg) {
+	// Construire la commande de lecture : bit 15 = 1, reg sur bits 14–12
+	uint16_t read_cmd = (1 << 15) | (reg << 12);
+
+	uint16_t received_data = TransmitReceiveSPI(drive_index, read_cmd);
+
+	if ((reg == DRV8711_TORQUE_REG)
+			&& (ReadRegConfig(drive_index, reg) & 0b010000000000)) { // datasheet bit 10 on register 1 always return 0
+		received_data = received_data | 0b010000000000;
+	}
+	if ((reg == DRV8711_CTRL_REG) && (received_data & 0b000000000100)) { // datasheet bit 2 on register 0 clear after write
+		received_data = received_data & 0b111111111011;
+	}
+
+	return received_data;
 }
 
 uint16_t TransmitReceiveSPI(DRIVE_MOTOR drive_index, uint16_t data) {
@@ -310,9 +314,13 @@ uint16_t TransmitReceiveSPI(DRIVE_MOTOR drive_index, uint16_t data) {
 	SelectDriveCS(drive_index);
 
 	// Transmettre le message
-	if (HAL_SPI_TransmitReceive(hspi, tx_data, rx_data, 2, HAL_MAX_DELAY)) {
+	uint8_t err = HAL_SPI_TransmitReceive(hspi, tx_data, rx_data, 2,
+	HAL_MAX_DELAY);
+
+	if (err != HAL_OK) {
 		// SPI erreur → allumer LED de diagnostic
 		HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
+		hal_spi_transmitreceive_error++;
 	}
 
 	// Désélectionner les puces (CS à LOW après la transmission)
@@ -321,21 +329,21 @@ uint16_t TransmitReceiveSPI(DRIVE_MOTOR drive_index, uint16_t data) {
 	// Reconstruire la valeur lue
 	uint16_t received_data = ((uint16_t) rx_data[0] << 8) | rx_data[1];
 
-	//test vs expected data
-	received_data = received_data & 0x0FFF;
-	uint8_t reg_test = (data & 0x7000) >> 12;
-	uint16_t expected_data_test = ReadRegConfig(drive_index, reg_test);
-	if ((reg_test == 1) && (expected_data_test & 0x0300)) { // datasheet bit 10 on register 1 always return 0
-		expected_data_test = expected_data_test & 0xFBFF;
-	}
-	if ((reg_test == 0) && (expected_data_test & 0x0002)) { // datasheet bit 2 on register 0 clear after write
-		expected_data_test = expected_data_test & 0xFFFD;
-	}
+	/*//test vs expected data
+	 received_data = received_data & 0x0FFF;
+	 uint8_t reg_test = (data & 0x7000) >> 12;
+	 uint16_t expected_data_test = ReadRegConfig(drive_index, reg_test);
+	 if ((reg_test == 1) && (expected_data_test & 0x0300)) { // datasheet bit 10 on register 1 always return 0
+	 expected_data_test = expected_data_test & 0xFBFF;
+	 }
+	 if ((reg_test == 0) && (expected_data_test & 0x0002)) { // datasheet bit 2 on register 0 clear after write
+	 expected_data_test = expected_data_test & 0xFFFD;
+	 }
 
-	if (received_data != expected_data_test) {
-		//HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
-		//flag_drive_fault = 1;
-	}
+	 if (received_data != expected_data_test) {
+	 //HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
+	 //flag_drive_fault = 1;
+	 }*/
 
 	// Extraire seulement les 12 bits de data
 	return received_data & 0x0FFF;
@@ -346,12 +354,12 @@ void SelectDriveCS(DRIVE_MOTOR drive_index) {
 	for (uint8_t num = 0; num < DRIVE_MOTOR_NUM; num++) {
 		if (num != drive_index) {
 			// Désélectionner la puce (CS à LOW après la transmission)
-			HAL_GPIO_WritePin(drive_ports[num][DRIVE_CS],
-					drive_pins[num][DRIVE_CS], GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(drive_ports[num][DRIVE_CS], drive_pins[num][DRIVE_CS],
+					GPIO_PIN_RESET);
 		} else if (num == drive_index) {
 			// Sélectionner la puce (CS à HIGH avant la transmission)
-			HAL_GPIO_WritePin(drive_ports[num][DRIVE_CS],
-					drive_pins[num][DRIVE_CS], GPIO_PIN_SET);
+			HAL_GPIO_WritePin(drive_ports[num][DRIVE_CS], drive_pins[num][DRIVE_CS],
+					GPIO_PIN_SET);
 		}
 	}
 }
@@ -437,12 +445,14 @@ uint16_t ReadRegConfig(DRIVE_MOTOR drive_index, uint8_t reg) {
  *   → Bit 10 (UVLO) = 1 → tension trop faible
  *   → Tous les autres bits = 0 → pas de défaut détecté sur les ponts A/B
  */
+static uint16_t last_status = 0;
 uint8_t flag_drive_fault = 0;
-uint16_t CheckDriveStatusRegister(DRIVE_MOTOR drive_index) {
-	uint16_t status = ReadSPI(drive_index, 7);
+uint8_t CheckDriveStatusRegister(DRIVE_MOTOR drive_index) {
+	uint16_t status = ReadSPI(drive_index, DRV8711_STATUS_REG);
 
 	if (status != 0x0000) {
 		// Une ou plusieurs erreurs détectées → flag drive en faute
+		last_status = status;
 		flag_drive_fault = 1;
 		return 1;
 	} else {
@@ -450,6 +460,10 @@ uint16_t CheckDriveStatusRegister(DRIVE_MOTOR drive_index) {
 		flag_drive_fault = 0;
 		return 0;
 	}
+}
+
+void ResetDriveStatusRegister(DRIVE_MOTOR drive_index) {
+	WriteSPI(drive_index, DRV8711_STATUS_REG, 0);
 }
 
 void EnableDrive(DRIVE_MOTOR drive_index) {
@@ -460,17 +474,12 @@ void EnableDrive(DRIVE_MOTOR drive_index) {
 	uint16_t reg_config = ReadRegConfig(drive_index, 0);
 	reg_config = reg_config | 0x0001;
 
-	WriteSPI(drive_index, 0, reg_config);
-
-	if (CheckDriveStatusRegister(drive_index) != 0) {
-		return;
-	}
+	WriteSPI(drive_index, DRV8711_CTRL_REG, reg_config);
 
 	drive_regs[drive_index].ctrl_reg.enbl = 1;
 
 	ReadAndVerifyDriveRegisters(drive_index);
-	//reg_config = ReadRegConfig(drive_index, 0);
-	//return;
+	CheckDriveStatusRegister(drive_index);
 }
 
 void DisableDrive(DRIVE_MOTOR drive_index) {
@@ -481,11 +490,7 @@ void DisableDrive(DRIVE_MOTOR drive_index) {
 	uint16_t reg_config = ReadRegConfig(drive_index, 0);
 	reg_config = reg_config & 0xFFFD;
 
-	WriteSPI(drive_index, 0, reg_config);
-
-	if (CheckDriveStatusRegister(drive_index) != 0) {
-		return;
-	}
+	WriteSPI(drive_index, DRV8711_CTRL_REG, reg_config);
 
 	drive_regs[drive_index].ctrl_reg.enbl = 0;
 
@@ -495,18 +500,17 @@ void DisableDrive(DRIVE_MOTOR drive_index) {
 }
 
 void StepDrive(DRIVE_MOTOR drive_index) {
-	if (CheckDriveStatusRegister(drive_index) != 0) {
-		return;
-	}
+	//if (CheckDriveStatusRegister(drive_index) != 0) {
+	//	return;
+	//}
 
-	uint16_t reg_config = ReadRegConfig(drive_index, 0);
-	reg_config = reg_config | 0x0004;
+	//uint16_t reg_config = ReadRegConfig(drive_index, 0);
+	//reg_config = reg_config | 0x0004;
 
-	WriteSPI(drive_index, 0, reg_config);
+	//WriteSPI(drive_index, DRV8711_CTRL_REG, reg_config);
 
-	if (CheckDriveStatusRegister(drive_index) != 0) {
-		return;
-	}
+	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_STEP],
+			drive_pins[drive_index][DRIVE_STEP], GPIO_PIN_SET);
 }
 
 void DirectionDrive(DRIVE_MOTOR drive_index, uint8_t dir) {
@@ -515,57 +519,315 @@ void DirectionDrive(DRIVE_MOTOR drive_index, uint8_t dir) {
 	}
 	uint16_t reg_config = ReadRegConfig(drive_index, 0);
 
-	if (dir == 0) {
-		reg_config = reg_config & 0xFFFD;
+	if (drive_regs[drive_index].ctrl_reg.rdir != 0) {
 		drive_regs[drive_index].ctrl_reg.rdir = 0;
+		reg_config = ReadRegConfig(drive_index, 0);
+		WriteSPI(drive_index, DRV8711_CTRL_REG, reg_config);
+		ReadAndVerifyDriveRegisters(drive_index);
+	}
+
+	if (dir == 0) {
+		HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_DIR],
+				drive_pins[drive_index][DRIVE_DIR], GPIO_PIN_RESET);
 	} else if (dir == 1) {
-		reg_config = reg_config | 0x0002;
-		drive_regs[drive_index].ctrl_reg.rdir = 1;
+		HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_DIR],
+				drive_pins[drive_index][DRIVE_DIR], GPIO_PIN_SET);
 	} else {
 		return;
 	}
 
-	WriteSPI(drive_index, 0, reg_config);
-
-	if (CheckDriveStatusRegister(drive_index) != 0) {
-		return;
-	}
-
-	ReadAndVerifyDriveRegisters(drive_index);
+	CheckDriveStatusRegister(drive_index);
 }
 
-void ResetDrive(DRIVE_MOTOR drive_index) {
-	// Reset drive
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_RESET],
-			drive_pins[drive_index][DRIVE_RESET], GPIO_PIN_SET);
-	HAL_Delay(100);
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_RESET],
-			drive_pins[drive_index][DRIVE_RESET], GPIO_PIN_RESET);
-
-	// Disable sleeping
-	HAL_GPIO_WritePin(drive_ports[drive_index][DRIVE_SLEEP],
-			drive_pins[drive_index][DRIVE_SLEEP], GPIO_PIN_SET);
-}
-
+uint32_t max_speed = (uint32_t) ((0xFF * 0.00000002) + (0xFF * 0.0000005)) * 1000000;
+#define SPEED 500
+uint32_t half_speed = SPEED >> 1;  // Divides by 2
 uint32_t counter = 0;
-//s'exécute au 1us
-void better_step_function() {
-	if (counter >= 10000) { //0
+uint32_t one_turn_counter = 0;
+void StepFunction() {
+
+	if (counter >= SPEED) { //0
 		counter = 0;
 		if (motor_pitch_on == 1) {
+			if (one_turn_counter >= 200) {
+				motor_pitch_on = 0;
+				one_turn_counter = 0;
+				//CheckDriveStatusRegister(DRIVE1);
+				//ReadAndVerifyDriveRegisters(DRIVE1);
+			} else {
+				one_turn_counter++;
+			}
+			//HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
 			HAL_GPIO_WritePin(drive_ports[DRIVE1][DRIVE_STEP],
 					drive_pins[DRIVE1][DRIVE_STEP], GPIO_PIN_SET);
 		}
-	} else if (counter == 3) {
+	} else if (counter == half_speed) {
 		counter++;
 		if (motor_pitch_on == 1) {
 			HAL_GPIO_WritePin(drive_ports[DRIVE1][DRIVE_STEP],
 					drive_pins[DRIVE1][DRIVE_STEP], GPIO_PIN_RESET);
+			//HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_RESET);
 		}
 	} else {
 		counter++;
 	}
 }
+
+void InitRegValuesStepper(DRIVE_MOTOR drive_index) {
+//
+// ───── CTRL REGISTER (0x00) ─────────────────────────────────────────────
+// Contrôle principal du moteur (activation, direction, step, mode de microstep)
+//
+	drive_regs[drive_index].ctrl_reg.enbl = 0;
+// ENBL : Active la sortie du driver
+// 0 = désactivé (sorties en haute impédance), 1 = activé
+// Par défaut DRV8711 : 0
+
+	drive_regs[drive_index].ctrl_reg.rdir = 0;
+// RDIR : Direction contrôlée par pin DIR si = 0, sinon inversée
+// Par défaut DRV8711 : 0
+
+	drive_regs[drive_index].ctrl_reg.rstep = 0;
+// RSTEP : 1: Indexer will advance one step; automatically cleared after write
+// Par défaut DRV8711 : 0
+
+	drive_regs[drive_index].ctrl_reg.mode = 0b0001;
+// MODE : Réglage du microstepping (0 = full step, jusqu’à 0b1000 = 1/256)
+// Par défaut DRV8711 : 0b0000 (full step)
+
+	drive_regs[drive_index].ctrl_reg.extstall = 0;
+// EXTSTALL : 0 = Stall détecté en interne, 1 = via pin externe
+// Par défaut DRV8711 : 0
+
+	drive_regs[drive_index].ctrl_reg.isgain = 0b00;
+// ISGAIN : Gain du senseur de courant (00 = 5, 01 = 10, 10 = 20, 11 = 40)
+// Par défaut DRV8711 : 0b00 (gain de 5)
+
+	drive_regs[drive_index].ctrl_reg.dtime = 0b00;
+// DTIME : Dead time entre les switches du pont H (00 = 400ns, 01 = 450ns, 10 = 650ns, 11 = 850ns)
+// Par défaut DRV8711 : 0b00
+
+//
+// ───── TORQUE REGISTER (0x01) ───────────────────────────────────────────
+// Détermine le courant de phase appliqué
+//
+	drive_regs[drive_index].torque_reg.torque = 13; // 100% de puissance avec isgain à 20
+// TORQUE : Niveau de couple (0–255), proportionnel au courant de sortie
+// Par défaut DRV8711 : 0xFF (255)
+
+	drive_regs[drive_index].torque_reg.smplth = 0b000;
+// SMPLTH : Durée du seuil BEMF pour la détection de blocage
+// Par défaut DRV8711 : 0b001
+
+//
+// ───── OFF REGISTER (0x02) ──────────────────────────────────────────────
+// Temps d’arrêt de PWM et mode PWM
+//
+	drive_regs[drive_index].off_reg.toff = 0x00;
+// TOFF : Temps mort (0 = désactivé, >0 = en pas de 500ns)
+// Par défaut DRV8711 : 0x30 (24 = 12 µs)
+
+	drive_regs[drive_index].off_reg.pwmmode = 0;
+// PWMMODE : 0 = interne (indexeur), 1 = externe (STEP/DIR)
+// Par défaut DRV8711 : 0
+
+//// ───── BLANK REGISTER (0x03) ────────────────────────────────────────────
+// Temps de masquage de détection de courant après une commutation
+//
+	drive_regs[drive_index].blank_reg.tblank = 0x00;
+// TBLANK : Masque de courant (en pas de 20ns) - — 0x80 = 2.56 µs
+// Par défaut DRV8711 : 0x80
+
+	drive_regs[drive_index].blank_reg.abt = 1;
+// ABT : Adaptive Blanking Time (0 = désactivé, 1 = activé)
+// Par défaut DRV8711 : 0
+
+//
+// ───── DECAY REGISTER (0x04) ────────────────────────────────────────────
+// Contrôle le mode de "décroissance" du courant moteur
+//
+	drive_regs[drive_index].decay_reg.tdecay = 0x10;
+// TDECAY : temps avant transition entre fast et slow decay (500ns steps)
+// Par défaut DRV8711 : 0x10 (8 µs)
+
+	drive_regs[drive_index].decay_reg.decmod = 0b101;
+// DECMOD : Use auto mixed decay at all times
+// Par défaut DRV8711 : 0b001 Slow decay for increasing current, mixed decay for decreasing current (indexer mode only)
+
+//
+// ───── STALL REGISTER (0x05) ────────────────────────────────────────────
+// Détection de blocage moteur (optionnel)
+//
+	drive_regs[drive_index].stall_reg.sdthr = 0x3F; //0xFF
+// SDTHR : Seuil de BEMF pour détecter un blocage
+// Par défaut DRV8711 : 0x40
+
+	drive_regs[drive_index].stall_reg.sdcnt = 0b00; //0b11
+// SDCNT : nombre de pas requis avant détection (00 = 2, ..., 11 = 8 pas)
+// Par défaut DRV8711 : 0b00
+
+	drive_regs[drive_index].stall_reg.vdiv = 0b10;
+// VDIV : Diviseur du signal BEMF pour détection (00 = /32)
+// Par défaut DRV8711 : 0b00
+
+//
+// ───── DRIVE REGISTER (0x06) ────────────────────────────────────────────
+// Réglage de la puissance des transistors MOSFET (gate drive)
+//
+	drive_regs[drive_index].drive_reg.ocpth = 0b00; //00
+// OCPTH : OCP threshold (00 = 250mV, 01 = 500mV, 10 = 750mV, 11 = 1000mV)
+// Par défaut DRV8711 : 0b01
+
+	drive_regs[drive_index].drive_reg.ocpdeg = 0b10; //10
+// OCPDEG : OCP deglitch time (00 = 1 µs, 01 = 2 µs, 10 = 4 µs, 11 = 8 µs)
+// Par défaut DRV8711 : 0b10
+
+	drive_regs[drive_index].drive_reg.tdriven = 0b10; //10
+// TDRIVEN : Low-side gate drive time (00 = 250ns, 01 = 500ns, 10 = 1us, 11 = 2us)
+// Par défaut DRV8711 : 0b01
+
+	drive_regs[drive_index].drive_reg.tdrivep = 0b10; //10
+// TDRIVEP : High-side gate drive time (00 = 250ns, 01 = 500ns, 10 = 1us, 11 = 2us)
+// Par défaut DRV8711 : 0b01
+
+	drive_regs[drive_index].drive_reg.idriven = 0b00; //11
+// IDRIVEP : Low-side gate drive peak current peak (sink) (00 = 100mA, 01 = 200mA, 10 = 300mA, 11 = 400mA)
+// Par défaut DRV8711 : 0b10
+
+	drive_regs[drive_index].drive_reg.idrivep = 0b00; //11
+// IDRIVEP : High-side gate drive peak current peak (source) (00 = 50mA, 01 = 100mA, 10 = 150mA, 11 = 200mA)
+// Par défaut DRV8711 : 0b10
+}
+
+/*
+ void InitRegValuesStepperDefault(DRIVE_MOTOR drive_index) {
+ //
+ // ───── CTRL REGISTER (0x00) ─────────────────────────────────────────────
+ // Contrôle principal du moteur (activation, direction, step, mode de microstep)
+ //
+ drive_regs[drive_index].ctrl_reg.enbl = 0;
+ // ENBL : Active la sortie du driver
+ // 0 = désactivé (sorties en haute impédance), 1 = activé
+ // Par défaut DRV8711 : 0
+
+ drive_regs[drive_index].ctrl_reg.rdir = 0;
+ // RDIR : Direction contrôlée par pin DIR si = 0, sinon inversée
+ // Par défaut DRV8711 : 0
+
+ drive_regs[drive_index].ctrl_reg.rstep = 0;
+ // RSTEP : Step contrôlé par pin STEP si = 0, sinon interne
+ // Par défaut DRV8711 : 0
+
+ drive_regs[drive_index].ctrl_reg.mode = 0b0010;
+ // MODE : Réglage du microstepping (0 = full step, jusqu’à 0b1111 = 1/256)
+ // Par défaut DRV8711 : 0b0010 (1/4 step)
+
+ drive_regs[drive_index].ctrl_reg.extstall = 0;
+ // EXTSTALL : 0 = Stall détecté en interne, 1 = via pin externe
+ // Par défaut DRV8711 : 0
+
+ drive_regs[drive_index].ctrl_reg.isgain = 0b00;
+ // ISGAIN : Gain du senseur de courant (00 = 5, 01 = 10, 10 = 20, 11 = 40)
+ // Par défaut DRV8711 : 0b00 (gain de 5)
+
+ drive_regs[drive_index].ctrl_reg.dtime = 0b11;
+ // DTIME : Dead time entre les switches du pont H (00 = 850ns)
+ // Par défaut DRV8711 : 0b11
+
+ //
+ // ───── TORQUE REGISTER (0x01) ───────────────────────────────────────────
+ // Détermine le courant de phase appliqué
+ //
+ //drive_regs[drive_index].torque_reg.torque = 24; // 100% de puissance avec isgain à 10
+ drive_regs[drive_index].torque_reg.torque = 0xFF;
+ // TORQUE : Niveau de couple (0–255), proportionnel au courant de sortie
+ // Par défaut DRV8711 : 0xFF (255)
+
+ drive_regs[drive_index].torque_reg.smplth = 0b001;
+ // SMPLTH : Durée du seuil BEMF pour la détection de blocage
+ // Par défaut DRV8711 : 0b001
+
+ //
+ // ───── OFF REGISTER (0x02) ──────────────────────────────────────────────
+ // Temps d’arrêt de PWM et mode PWM
+ //
+ drive_regs[drive_index].off_reg.toff = 0x30;
+ // TOFF : Temps mort (0 = désactivé, >0 = en pas de 500ns)
+ // Par défaut DRV8711 : 0x30 (24 = 12 µs)
+
+ drive_regs[drive_index].off_reg.pwmmode = 0;
+ // PWMMODE : 0 = interne (indexeur), 1 = externe (STEP/DIR)
+ // Par défaut DRV8711 : 0
+
+ //
+ // ───── BLANK REGISTER (0x03) ────────────────────────────────────────────
+ // Temps de masquage de détection de courant après une commutation
+ //
+ drive_regs[drive_index].blank_reg.tblank = 0x80;
+ // TBLANK : Masque de courant (en pas de 20ns) — 0x80 = 2.56 µs
+ // Par défaut DRV8711 : 0x80
+
+ drive_regs[drive_index].blank_reg.abt = 0;
+ // ABT : Adaptive Blanking Time (0 = désactivé, 1 = activé)
+ // Par défaut DRV8711 : 0
+
+ //
+ // ───── DECAY REGISTER (0x04) ────────────────────────────────────────────
+ // Contrôle le mode de "décroissance" du courant moteur
+ //
+ drive_regs[drive_index].decay_reg.tdecay = 0x10;
+ // TDECAY : temps avant transition entre fast et slow decay (500ns steps)
+ // Par défaut DRV8711 : 0x10 (8 µs)
+
+ drive_regs[drive_index].decay_reg.decmod = 0b001;
+ // DECMOD : 000 = slow decay forcé, 001 = fast, 010 = mixed decay
+ // Par défaut DRV8711 : 0b001 (slow decay)
+
+ //
+ // ───── STALL REGISTER (0x05) ────────────────────────────────────────────
+ // Détection de blocage moteur (optionnel)
+ //
+ drive_regs[drive_index].stall_reg.sdthr = 0x40;
+ // SDTHR : Seuil de BEMF pour détecter un blocage
+ // Par défaut DRV8711 : 0x40
+
+ drive_regs[drive_index].stall_reg.sdcnt = 0b00;
+ // SDCNT : nombre de pas requis avant détection (00 = 2, ..., 11 = 8 pas)
+ // Par défaut DRV8711 : 0b00
+
+ drive_regs[drive_index].stall_reg.vdiv = 0b00;
+ // VDIV : Diviseur du signal BEMF pour détection (00 = /32)
+ // Par défaut DRV8711 : 0b00
+
+ //
+ // ───── DRIVE REGISTER (0x06) ────────────────────────────────────────────
+ // Réglage de la puissance des transistors MOSFET (gate drive)
+ //
+ drive_regs[drive_index].drive_reg.ocpth = 0b01;
+ // OCPTH : Seuil de détection de surintensité (00 = 250mV, 11 = 2000mV)
+ // Par défaut DRV8711 : 0b01 (500mV)
+
+ drive_regs[drive_index].drive_reg.ocpdeg = 0b10;
+ // OCPDEG : Temps de filtrage de la surintensité (00 = 1 µs, 11 = 8 µs)
+ // Par défaut DRV8711 : 0b10
+
+ drive_regs[drive_index].drive_reg.tdriven = 0b01;
+ // TDRIVEN : Durée de l’impulsion LOW-SIDE (00 = 250ns, 11 = 500ns)
+ // Par défaut DRV8711 : 0b01
+
+ drive_regs[drive_index].drive_reg.tdrivep = 0b01;
+ // TDRIVEP : Durée de l’impulsion HIGH-SIDE (00 = 250ns, 11 = 500ns)
+ // Par défaut DRV8711 : 0b01
+
+ drive_regs[drive_index].drive_reg.idriven = 0b10;
+ // IDRIVEP : Courant de crête HIGH-SIDE (00 = 20mA, 11 = 150mA)
+ // Par défaut DRV8711 : 0b10
+
+ drive_regs[drive_index].drive_reg.idrivep = 0b10;
+ // IDRIVEP : Courant de crête HIGH-SIDE (00 = 20mA, 11 = 150mA)
+ // Par défaut DRV8711 : 0b10
+ }
+ */
 
 /*
  uint32_t multiplicator_slowing_motor = 0;
@@ -604,262 +866,6 @@ void better_step_function() {
  }
  }
  } */
-
-void InitRegValuesStepperDefault(DRIVE_MOTOR drive_index) {
-//
-// ───── CTRL REGISTER (0x00) ─────────────────────────────────────────────
-// Contrôle principal du moteur (activation, direction, step, mode de microstep)
-//
-	drive_regs[drive_index].ctrl_reg.enbl = 0;
-// ENBL : Active la sortie du driver
-// 0 = désactivé (sorties en haute impédance), 1 = activé
-// Par défaut DRV8711 : 0
-
-	drive_regs[drive_index].ctrl_reg.rdir = 0;
-// RDIR : Direction contrôlée par pin DIR si = 0, sinon inversée
-// Par défaut DRV8711 : 0
-
-	drive_regs[drive_index].ctrl_reg.rstep = 0;
-// RSTEP : Step contrôlé par pin STEP si = 0, sinon interne
-// Par défaut DRV8711 : 0
-
-	drive_regs[drive_index].ctrl_reg.mode = 0b0010;
-// MODE : Réglage du microstepping (0 = full step, jusqu’à 0b1111 = 1/256)
-// Par défaut DRV8711 : 0b0010 (1/4 step)
-
-	drive_regs[drive_index].ctrl_reg.extstall = 0;
-// EXTSTALL : 0 = Stall détecté en interne, 1 = via pin externe
-// Par défaut DRV8711 : 0
-
-	drive_regs[drive_index].ctrl_reg.isgain = 0b00;
-// ISGAIN : Gain du senseur de courant (00 = 5, 01 = 10, 10 = 20, 11 = 40)
-// Par défaut DRV8711 : 0b00 (gain de 5)
-
-	drive_regs[drive_index].ctrl_reg.dtime = 0b11;
-// DTIME : Dead time entre les switches du pont H (00 = 850ns)
-// Par défaut DRV8711 : 0b11
-
-//
-// ───── TORQUE REGISTER (0x01) ───────────────────────────────────────────
-// Détermine le courant de phase appliqué
-//
-//drive_regs[drive_index].torque_reg.torque = 24; // 100% de puissance avec isgain à 10
-	drive_regs[drive_index].torque_reg.torque = 0xFF;
-// TORQUE : Niveau de couple (0–255), proportionnel au courant de sortie
-// Par défaut DRV8711 : 0xFF (255)
-
-	drive_regs[drive_index].torque_reg.smplth = 0b001;
-// SMPLTH : Durée du seuil BEMF pour la détection de blocage
-// Par défaut DRV8711 : 0b001
-
-//
-// ───── OFF REGISTER (0x02) ──────────────────────────────────────────────
-// Temps d’arrêt de PWM et mode PWM
-//
-	drive_regs[drive_index].off_reg.toff = 0x30;
-// TOFF : Temps mort (0 = désactivé, >0 = en pas de 500ns)
-// Par défaut DRV8711 : 0x30 (24 = 12 µs)
-
-	drive_regs[drive_index].off_reg.pwmmode = 0;
-// PWMMODE : 0 = interne (indexeur), 1 = externe (STEP/DIR)
-// Par défaut DRV8711 : 0
-
-//
-// ───── BLANK REGISTER (0x03) ────────────────────────────────────────────
-// Temps de masquage de détection de courant après une commutation
-//
-	drive_regs[drive_index].blank_reg.tblank = 0x80;
-// TBLANK : Masque de courant (en pas de 20ns) — 0x80 = 2.56 µs
-// Par défaut DRV8711 : 0x80
-
-	drive_regs[drive_index].blank_reg.abt = 0;
-// ABT : Adaptive Blanking Time (0 = désactivé, 1 = activé)
-// Par défaut DRV8711 : 0
-
-//
-// ───── DECAY REGISTER (0x04) ────────────────────────────────────────────
-// Contrôle le mode de "décroissance" du courant moteur
-//
-	drive_regs[drive_index].decay_reg.tdecay = 0x10;
-// TDECAY : temps avant transition entre fast et slow decay (500ns steps)
-// Par défaut DRV8711 : 0x10 (8 µs)
-
-	drive_regs[drive_index].decay_reg.decmod = 0b001;
-// DECMOD : 000 = slow decay forcé, 001 = fast, 010 = mixed decay
-// Par défaut DRV8711 : 0b001 (slow decay)
-
-//
-// ───── STALL REGISTER (0x05) ────────────────────────────────────────────
-// Détection de blocage moteur (optionnel)
-//
-	drive_regs[drive_index].stall_reg.sdthr = 0x40;
-// SDTHR : Seuil de BEMF pour détecter un blocage
-// Par défaut DRV8711 : 0x40
-
-	drive_regs[drive_index].stall_reg.sdcnt = 0b00;
-// SDCNT : nombre de pas requis avant détection (00 = 2, ..., 11 = 8 pas)
-// Par défaut DRV8711 : 0b00
-
-	drive_regs[drive_index].stall_reg.vdiv = 0b00;
-// VDIV : Diviseur du signal BEMF pour détection (00 = /32)
-// Par défaut DRV8711 : 0b00
-
-//
-// ───── DRIVE REGISTER (0x06) ────────────────────────────────────────────
-// Réglage de la puissance des transistors MOSFET (gate drive)
-//
-	drive_regs[drive_index].drive_reg.ocpth = 0b01;
-// OCPTH : Seuil de détection de surintensité (00 = 250mV, 11 = 2000mV)
-// Par défaut DRV8711 : 0b01 (500mV)
-
-	drive_regs[drive_index].drive_reg.ocpdeg = 0b10;
-// OCPDEG : Temps de filtrage de la surintensité (00 = 1 µs, 11 = 8 µs)
-// Par défaut DRV8711 : 0b10
-
-	drive_regs[drive_index].drive_reg.tdriven = 0b01;
-// TDRIVEN : Durée de l’impulsion LOW-SIDE (00 = 250ns, 11 = 500ns)
-// Par défaut DRV8711 : 0b01
-
-	drive_regs[drive_index].drive_reg.tdrivep = 0b01;
-// TDRIVEP : Durée de l’impulsion HIGH-SIDE (00 = 250ns, 11 = 500ns)
-// Par défaut DRV8711 : 0b01
-
-	drive_regs[drive_index].drive_reg.idriven = 0b10;
-// IDRIVEP : Courant de crête HIGH-SIDE (00 = 20mA, 11 = 150mA)
-// Par défaut DRV8711 : 0b10
-
-	drive_regs[drive_index].drive_reg.idrivep = 0b10;
-// IDRIVEP : Courant de crête HIGH-SIDE (00 = 20mA, 11 = 150mA)
-// Par défaut DRV8711 : 0b10
-}
-
-void InitRegValuesStepper(DRIVE_MOTOR drive_index) {
-//
-// ───── CTRL REGISTER (0x00) ─────────────────────────────────────────────
-// Contrôle principal du moteur (activation, direction, step, mode de microstep)
-//
-	drive_regs[drive_index].ctrl_reg.enbl = 0;
-// ENBL : Active la sortie du driver
-// 0 = désactivé (sorties en haute impédance), 1 = activé
-// Par défaut DRV8711 : 0
-
-	drive_regs[drive_index].ctrl_reg.rdir = 0;
-// RDIR : Direction contrôlée par pin DIR si = 0, sinon inversée
-// Par défaut DRV8711 : 0
-
-	drive_regs[drive_index].ctrl_reg.rstep = 0;
-// RSTEP : Step contrôlé par pin STEP si = 0, sinon interne
-// Par défaut DRV8711 : 0
-
-	drive_regs[drive_index].ctrl_reg.mode = 0b0000;
-// MODE : Réglage du microstepping (0 = full step, jusqu’à 0b1111 = 1/256)
-// Par défaut DRV8711 : 0b0000 (full step)
-
-	drive_regs[drive_index].ctrl_reg.extstall = 0;
-// EXTSTALL : 0 = Stall détecté en interne, 1 = via pin externe
-// Par défaut DRV8711 : 0
-
-	drive_regs[drive_index].ctrl_reg.isgain = 0b10;
-// ISGAIN : Gain du senseur de courant (00 = 5, 01 = 10, 10 = 20, 11 = 40)
-// Par défaut DRV8711 : 0b00 (gain de 5)
-
-	drive_regs[drive_index].ctrl_reg.dtime = 0b11;
-// DTIME : Dead time entre les switches du pont H (00 = 850ns)
-// Par défaut DRV8711 : 0b00
-
-//
-// ───── TORQUE REGISTER (0x01) ───────────────────────────────────────────
-// Détermine le courant de phase appliqué
-//
-//drive_regs[drive_index].torque_reg.torque = 24; // 100% de puissance avec isgain à 10
-	drive_regs[drive_index].torque_reg.torque = 0x50; // 50% de puissance avec isgain à 10
-// TORQUE : Niveau de couple (0–255), proportionnel au courant de sortie
-// Par défaut DRV8711 : 0xFF (255)
-
-	drive_regs[drive_index].torque_reg.smplth = 0b001;
-// SMPLTH : Durée du seuil BEMF pour la détection de blocage
-// Par défaut DRV8711 : 0b000
-
-//
-// ───── OFF REGISTER (0x02) ──────────────────────────────────────────────
-// Temps d’arrêt de PWM et mode PWM
-//
-	drive_regs[drive_index].off_reg.toff = 0x28;
-// TOFF : Temps mort (0 = désactivé, >0 = en pas de 500ns)
-// Par défaut DRV8711 : 0x30 (24 = 12 µs)
-
-	drive_regs[drive_index].off_reg.pwmmode = 0;
-// PWMMODE : 0 = interne (indexeur), 1 = externe (STEP/DIR)
-// Par défaut DRV8711 : 0
-
-//
-// ───── BLANK REGISTER (0x03) ────────────────────────────────────────────
-// Temps de masquage de détection de courant après une commutation
-//
-	drive_regs[drive_index].blank_reg.tblank = 0x80;
-// TBLANK : Masque de courant (en pas de 20ns) — 0x80 = 2.56 µs
-// Par défaut DRV8711 : 0x80
-
-	drive_regs[drive_index].blank_reg.abt = 1;
-// ABT : Adaptive Blanking Time (0 = désactivé, 1 = activé)
-// Par défaut DRV8711 : 0
-
-//
-// ───── DECAY REGISTER (0x04) ────────────────────────────────────────────
-// Contrôle le mode de "décroissance" du courant moteur
-//
-	drive_regs[drive_index].decay_reg.tdecay = 0x10; //0x80
-// TDECAY : temps avant transition entre fast et slow decay (500ns steps)
-// Par défaut DRV8711 : 0x10 (8 µs)
-
-	drive_regs[drive_index].decay_reg.decmod = 0b100; //0b000
-// DECMOD : 000 = slow decay forcé, 001 = fast, 010 = mixed decay
-// Par défaut DRV8711 : 0b010 (mixed decay)
-
-//
-// ───── STALL REGISTER (0x05) ────────────────────────────────────────────
-// Détection de blocage moteur (optionnel)
-//
-	drive_regs[drive_index].stall_reg.sdthr = 0xFF; //0xFF
-// SDTHR : Seuil de BEMF pour détecter un blocage
-// Par défaut DRV8711 : 0x40
-
-	drive_regs[drive_index].stall_reg.sdcnt = 0b10; //0b11
-// SDCNT : nombre de pas requis avant détection (00 = 2, ..., 11 = 8 pas)
-// Par défaut DRV8711 : 0b00
-
-	drive_regs[drive_index].stall_reg.vdiv = 0b00;
-// VDIV : Diviseur du signal BEMF pour détection (00 = /32)
-// Par défaut DRV8711 : 0b00
-
-//
-// ───── DRIVE REGISTER (0x06) ────────────────────────────────────────────
-// Réglage de la puissance des transistors MOSFET (gate drive)
-//
-	drive_regs[drive_index].drive_reg.ocpth = 0b01;
-// OCPTH : Seuil de détection de surintensité (00 = 250mV, 11 = 2000mV)
-// Par défaut DRV8711 : 0b01 (500mV)
-
-	drive_regs[drive_index].drive_reg.ocpdeg = 0b10;
-// OCPDEG : Temps de filtrage de la surintensité (00 = 1 µs, 11 = 8 µs)
-// Par défaut DRV8711 : 0b00
-
-	drive_regs[drive_index].drive_reg.tdriven = 0b01; //0b11
-// TDRIVEN : Durée de l’impulsion LOW-SIDE (00 = 250ns, 11 = 500ns)
-// Par défaut DRV8711 : 0b00
-
-	drive_regs[drive_index].drive_reg.tdrivep = 0b01; //0b11
-// TDRIVEP : Durée de l’impulsion HIGH-SIDE (00 = 250ns, 11 = 500ns)
-// Par défaut DRV8711 : 0b00
-
-	drive_regs[drive_index].drive_reg.idriven = 0b10; //0b11
-// IDRIVEP : Courant de crête HIGH-SIDE (00 = 20mA, 11 = 150mA)
-// Par défaut DRV8711 : 0b00
-
-	drive_regs[drive_index].drive_reg.idrivep = 0b10;
-	// IDRIVEP : Courant de crête HIGH-SIDE (00 = 20mA, 11 = 150mA)
-	// Par défaut DRV8711 : 0b10
-}
 
 /*
 
@@ -961,61 +967,6 @@ void InitRegValuesStepper(DRIVE_MOTOR drive_index) {
  drive_regs[drive_index].drive_reg.tdrivep = 0b11;// High-side gate drive time of 500ns
  drive_regs[drive_index].drive_reg.idriven = 0b11;// Low-side gate drive peak current of 300mA peak (sink)
  drive_regs[drive_index].drive_reg.idrivep = 0b11;// High-side gate drive peak current of 150mA peak (sink)
- }
-
- */
-
-/*
-
- // PWM
- TIM_HandleTypeDef *pwm_timers[2] = { 0, 0 };
- uint32_t pwm_channels[2] = { 0, 0 };
- enum PWMs {
- PWM1 = 0, PWM2
- };
-
- TIM_HandleTypeDef *pwm1_timer;
- TIM_HandleTypeDef *pwm2_timer;
- uint32_t pwm1_channel;
- uint32_t pwm2_channel;
-
- void SetDutyCycle(uint32_t pwm_index, uint16_t duty_cycle) {
- HAL_TIM_PWM_Stop(pwm_timers[pwm_index], pwm_channels[pwm_index]); // stop generation of pwm
-
- TIM_OC_InitTypeDef sConfigOC;
- // (*htim).Init.Period = PWM_PERIOD; // set the period duration
- // HAL_TIM_PWM_Init(htim); // reinititialise with new period value
-
- sConfigOC.OCMode = TIM_OCMODE_PWM1;
- //sConfigOC.Pulse = (uint32_t)(duty_cycle * (float)PWM_PERIOD); // set the pulse duration
- sConfigOC.Pulse = duty_cycle;
- sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
- sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
- HAL_TIM_PWM_ConfigChannel(pwm_timers[pwm_index], &sConfigOC,
- pwm_channels[pwm_index]);
-
- //HAL_TIM_PWM_Start(htim, TIM_CHANNEL_2); // start pwm generation
- }
-
- void DriveMastRight() {
- SetDutyCycle(PWM1, 360);
- SetDutyCycle(PWM2, 480);
- HAL_TIM_PWM_Start(pwm1_timer, pwm1_channel);
- HAL_TIM_PWM_Start(pwm2_timer, pwm2_channel);
- }
-
- void DriveMastLeft() {
- SetDutyCycle(PWM1, 480);
- SetDutyCycle(PWM2, 360);
- HAL_TIM_PWM_Start(pwm1_timer, pwm1_channel);
- HAL_TIM_PWM_Start(pwm2_timer, pwm2_channel);
- }
-
- void DriveMastStop() {
- SetDutyCycle(PWM1, 0);
- SetDutyCycle(PWM2, 0);
- HAL_TIM_PWM_Stop(pwm1_timer, pwm1_channel);
- HAL_TIM_PWM_Stop(pwm2_timer, pwm2_channel);
  }
 
  */

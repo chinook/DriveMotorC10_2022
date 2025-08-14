@@ -33,6 +33,12 @@
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
 
+ extern uint8_t timer1ms_flag;
+ extern uint8_t timer50ms_flag;
+ extern uint8_t timer100ms_flag;
+ extern uint8_t timer250ms_flag;
+ extern uint8_t timer500ms_flag;
+
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -58,9 +64,9 @@ void SysTick_Handler(void);
 void CAN1_RX0_IRQHandler(void);
 void CAN1_RX1_IRQHandler(void);
 void EXTI9_5_IRQHandler(void);
-void TIM1_UP_TIM10_IRQHandler(void);
+void TIM2_IRQHandler(void);
+void TIM3_IRQHandler(void);
 void TIM4_IRQHandler(void);
-void TIM7_IRQHandler(void);
 /* USER CODE BEGIN EFP */
 
 /* USER CODE END EFP */

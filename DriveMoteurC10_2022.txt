@@ -1,0 +1,142 @@
+Configuration	DriveMoteurC10_2022
+STM32CubeMX 	6.11.1
+Date	08/10/2025
+MCU	STM32F446VETx
+
+
+
+PERIPHERALS	MODES	FUNCTIONS	PINS
+CAN1	Activated	CAN1_RX	PA11
+CAN1	Activated	CAN1_TX	PA12
+SPI1	Full-Duplex Master	SPI1_MISO	PA6
+SPI1	Full-Duplex Master	SPI1_MOSI	PA7
+SPI1	Full-Duplex Master	SPI1_SCK	PA5
+SYS	SysTick	SYS_VS_Systick	VP_SYS_VS_Systick
+TIM1	Internal Clock	TIM1_VS_ClockSourceINT	VP_TIM1_VS_ClockSourceINT
+TIM2	Internal Clock	TIM2_VS_ClockSourceINT	VP_TIM2_VS_ClockSourceINT
+TIM4	Internal Clock	TIM4_VS_ClockSourceINT	VP_TIM4_VS_ClockSourceINT
+TIM5	Internal Clock	TIM5_VS_ClockSourceINT	VP_TIM5_VS_ClockSourceINT
+TIM10	Enable_Timer	TIM10_VS_ClockSourceINT	VP_TIM10_VS_ClockSourceINT
+
+
+
+Pin Nb	PINs	FUNCTIONs	LABELs
+2	PE3	GPIO_Input	nSTALL2
+3	PE4	GPIO_Input	nFAULT2
+4	PE5	GPIO_Output	FT_RESET
+5	PE6	GPIO_Output	SPI_CS2
+15	PC0	GPIO_Output	BIN2_2
+16	PC1	GPIO_Output	BIN1_2
+17	PC2	GPIO_Output	DIR2
+30	PA5	SPI1_SCK	
+31	PA6	SPI1_MISO	
+32	PA7	SPI1_MOSI	
+33	PC4	GPIO_Output	nSLEEP2
+34	PC5	GPIO_Output	RESET2
+36	PB1	GPIO_Input	nSTALL1
+37	PB2	GPIO_Input	nFAULT1
+38	PE7	GPIO_Output	SPI_CS1
+39	PE8	GPIO_EXTI8	PB2
+40	PE9	GPIO_EXTI9	PB1
+41	PE10	GPIO_Output	BIN2_1
+42	PE11	GPIO_Output	BIN1_1
+43	PE12	GPIO_Output	DIR1
+44	PE13	GPIO_Output	STEP1
+45	PE14	GPIO_Output	RESET1
+46	PE15	GPIO_Output	nSLEEP1
+47	PB10*	TIM2_CH3	
+70	PA11	CAN1_RX	
+71	PA12	CAN1_TX	
+72	PA13*	SYS_JTMS-SWDIO	
+76	PA14*	SYS_JTCK-SWCLK	
+81	PD0	GPIO_Output	LED_WARNING
+82	PD1	GPIO_Output	LED_ERROR
+83	PD2	GPIO_Output	LED_CANB
+84	PD3	GPIO_Output	LED_CANA
+85	PD4	GPIO_Output	LED1
+86	PD5	GPIO_Output	LED2
+87	PD6	GPIO_Output	LED4
+88	PD7	GPIO_Output	LED3
+89	PB3*	SYS_JTDO-SWO	
+98	PE1	GPIO_Output	STEP2
+PERIPHERALS	MODES	FUNCTIONS	PINS
+CAN1	Activated	CAN1_RX	PA11
+CAN1	Activated	CAN1_TX	PA12
+SPI1	Full-Duplex Master	SPI1_MISO	PA6
+SPI1	Full-Duplex Master	SPI1_MOSI	PA7
+SPI1	Full-Duplex Master	SPI1_SCK	PA5
+SYS	SysTick	SYS_VS_Systick	VP_SYS_VS_Systick
+TIM1	Internal Clock	TIM1_VS_ClockSourceINT	VP_TIM1_VS_ClockSourceINT
+TIM2	Internal Clock	TIM2_VS_ClockSourceINT	VP_TIM2_VS_ClockSourceINT
+TIM4	Internal Clock	TIM4_VS_ClockSourceINT	VP_TIM4_VS_ClockSourceINT
+TIM5	Internal Clock	TIM5_VS_ClockSourceINT	VP_TIM5_VS_ClockSourceINT
+TIM10	Enable_Timer	TIM10_VS_ClockSourceINT	VP_TIM10_VS_ClockSourceINT
+
+
+
+Pin Nb	PINs	FUNCTIONs	LABELs
+2	PE3	GPIO_Input	nSTALL2
+3	PE4	GPIO_Input	nFAULT2
+4	PE5	GPIO_Output	FT_RESET
+5	PE6	GPIO_Output	SPI_CS2
+15	PC0	GPIO_Output	BIN2_2
+16	PC1	GPIO_Output	BIN1_2
+17	PC2	GPIO_Output	DIR2
+30	PA5	SPI1_SCK	
+31	PA6	SPI1_MISO	
+32	PA7	SPI1_MOSI	
+33	PC4	GPIO_Output	nSLEEP2
+34	PC5	GPIO_Output	RESET2
+36	PB1	GPIO_Input	nSTALL1
+37	PB2	GPIO_Input	nFAULT1
+38	PE7	GPIO_Output	SPI_CS1
+39	PE8	GPIO_EXTI8	PB2
+40	PE9	GPIO_EXTI9	PB1
+41	PE10	GPIO_Output	BIN2_1
+42	PE11	GPIO_Output	BIN1_1
+43	PE12	GPIO_Output	DIR1
+44	PE13	GPIO_Output	STEP1
+45	PE14	GPIO_Output	RESET1
+46	PE15	GPIO_Output	nSLEEP1
+47	PB10*	TIM2_CH3	
+70	PA11	CAN1_RX	
+71	PA12	CAN1_TX	
+72	PA13*	SYS_JTMS-SWDIO	
+76	PA14*	SYS_JTCK-SWCLK	
+81	PD0	GPIO_Output	LED_WARNING
+82	PD1	GPIO_Output	LED_ERROR
+83	PD2	GPIO_Output	LED_CANB
+84	PD3	GPIO_Output	LED_CANA
+85	PD4	GPIO_Output	LED1
+86	PD5	GPIO_Output	LED2
+87	PD6	GPIO_Output	LED4
+88	PD7	GPIO_Output	LED3
+89	PB3*	SYS_JTDO-SWO	
+98	PE1	GPIO_Output	STEP2
+
+
+
+SOFTWARE PROJECT
+
+Project Settings : 
+Project Name : DriveMoteurC10_2022
+Project Folder : C:\@chinook\github\DriveMotorC10_2022
+Toolchain / IDE : STM32CubeIDE
+Firmware Package Name and Version : STM32Cube FW_F4 V1.28.2
+
+
+Code Generation Settings : 
+STM32Cube MCU packages and embedded software packs : Copy only the necessary library files
+Generate peripheral initialization as a pair of '.c/.h' files per peripheral : No
+Backup previously generated files when re-generating : No
+Delete previously generated files when not re-generated : Yes
+Set all free pins as analog (to optimize the power consumption) : No
+
+
+Toolchains Settings : 
+Compiler Optimizations : 
+
+
+
+
+

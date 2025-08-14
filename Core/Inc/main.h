@@ -36,7 +36,7 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-extern uint8_t motor_pitch_on;
+
 extern SPI_HandleTypeDef hspi1;
 /* USER CODE END ET */
 
@@ -83,10 +83,6 @@ typedef struct Motorss_
 	MotorStatus motors[2];
 } Motorss;
 extern Motorss motorss;
-
-extern uint8_t b_timer500ms_flag;
-extern uint8_t timer50ms_flag;
-extern uint8_t b_timer250ms_flag;
 
 extern uint8_t can1_recv_flag;
 extern uint32_t speed_stepper_motor_pitch;
