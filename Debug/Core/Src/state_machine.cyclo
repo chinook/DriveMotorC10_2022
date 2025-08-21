@@ -1,0 +1,9 @@
+../Core/Src/state_machine.c:44:10:DoStateInit	1
+../Core/Src/state_machine.c:61:10:DoStateAssessPushButtons	5
+../Core/Src/state_machine.c:115:10:DoStatePitchControl	1
+../Core/Src/state_machine.c:120:10:DoStateMastControl	2
+../Core/Src/state_machine.c:128:10:DoStateCAN	2
+../Core/Src/state_machine.c:168:10:DoStateROPS	6
+../Core/Src/state_machine.c:208:10:DoStateEmergencyStop	2
+../Core/Src/state_machine.c:216:6:DoStateError	1
+../Core/Src/state_machine.c:221:6:ExecuteStateMachine	15

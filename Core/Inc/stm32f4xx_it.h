@@ -1,20 +1,20 @@
 /* USER CODE BEGIN Header */
 /**
-  ******************************************************************************
-  * @file    stm32f4xx_it.h
-  * @brief   This file contains the headers of the interrupt handlers.
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2022 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
  ******************************************************************************
-  */
+ * @file    stm32f4xx_it.h
+ * @brief   This file contains the headers of the interrupt handlers.
+ ******************************************************************************
+ * @attention
+ *
+ * Copyright (c) 2022 STMicroelectronics.
+ * All rights reserved.
+ *
+ * This software is licensed under terms that can be found in the LICENSE file
+ * in the root directory of this software component.
+ * If no LICENSE file comes with this software, it is provided AS-IS.
+ *
+ ******************************************************************************
+ */
 /* USER CODE END Header */
 
 /* Define to prevent recursive inclusion -------------------------------------*/
@@ -28,16 +28,22 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include "stm32f4xx_hal.h"
+
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
 
- extern uint8_t timer1ms_flag;
- extern uint8_t timer50ms_flag;
- extern uint8_t timer100ms_flag;
- extern uint8_t timer250ms_flag;
- extern uint8_t timer500ms_flag;
+extern uint8_t timer_1ms_flag;
+extern uint8_t timer_50ms_flag;
+extern uint8_t timer_100ms_flag;
+extern uint8_t timer_250ms_flag;
+extern uint8_t timer_500ms_flag;
+extern uint8_t step_flag;
+
+extern uint8_t pb1_value;
+extern uint8_t pb2_value;
 
 /* USER CODE END ET */
 
@@ -66,7 +72,6 @@ void CAN1_RX1_IRQHandler(void);
 void EXTI9_5_IRQHandler(void);
 void TIM2_IRQHandler(void);
 void TIM3_IRQHandler(void);
-void TIM4_IRQHandler(void);
 /* USER CODE BEGIN EFP */
 
 /* USER CODE END EFP */

@@ -23,7 +23,6 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
-#include "main.h"
 #include "motor.h"
 
 /* USER CODE END Includes */
@@ -45,16 +44,25 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-uint8_t timer1ms_flag = 0;
-uint8_t timer50ms_flag = 0;
-uint8_t timer100ms_flag = 0;
-uint8_t timer250ms_flag = 0;
-uint8_t timer500ms_flag = 0;
 
-uint8_t counter_50ms = 0;
-uint8_t counter_100ms = 0;
-uint8_t counter_250ms = 0;
-uint16_t counter_500ms = 0;
+uint8_t timer_1ms_flag = 0;
+uint8_t timer_50ms_flag = 0;
+uint8_t timer_100ms_flag = 0;
+uint8_t timer_250ms_flag = 0;
+uint8_t timer_500ms_flag = 0;
+
+uint8_t step_flag = 0;
+
+uint8_t timer_50ms_counter = 0;
+uint8_t timer_100ms_counter = 0;
+uint8_t timer_250ms_counter = 0;
+uint16_t timer_500ms_counter = 0;
+
+uint8_t pb1_value = 0;
+uint8_t pb2_value = 0;
+
+volatile uint8_t sub_step = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -71,7 +79,6 @@ uint16_t counter_500ms = 0;
 extern CAN_HandleTypeDef hcan1;
 extern TIM_HandleTypeDef htim2;
 extern TIM_HandleTypeDef htim3;
-extern TIM_HandleTypeDef htim4;
 /* USER CODE BEGIN EV */
 
 /* USER CODE END EV */
@@ -219,7 +226,7 @@ void SysTick_Handler(void)
 void CAN1_RX0_IRQHandler(void)
 {
   /* USER CODE BEGIN CAN1_RX0_IRQn 0 */
-	//HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
+
   /* USER CODE END CAN1_RX0_IRQn 0 */
   HAL_CAN_IRQHandler(&hcan1);
   /* USER CODE BEGIN CAN1_RX0_IRQn 1 */
@@ -233,7 +240,7 @@ void CAN1_RX0_IRQHandler(void)
 void CAN1_RX1_IRQHandler(void)
 {
   /* USER CODE BEGIN CAN1_RX1_IRQn 0 */
-	//HAL_GPIO_WritePin(LED_CANB_GPIO_Port, LED_CANB_Pin, GPIO_PIN_SET);
+
   /* USER CODE END CAN1_RX1_IRQn 0 */
   HAL_CAN_IRQHandler(&hcan1);
   /* USER CODE BEGIN CAN1_RX1_IRQn 1 */
@@ -253,7 +260,17 @@ void EXTI9_5_IRQHandler(void)
   HAL_GPIO_EXTI_IRQHandler(PB1_Pin);
   /* USER CODE BEGIN EXTI9_5_IRQn 1 */
 
-	// HAL_GPIO_TogglePin(LED_CANA_GPIO_Port, LED_CANA_Pin);
+	if (HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin) == GPIO_PIN_SET) {
+		pb1_value = 0; //bouton NO
+	} else {
+		pb1_value = 1; //bouton NO
+	}
+	if (HAL_GPIO_ReadPin(PB2_GPIO_Port, PB2_Pin) == GPIO_PIN_SET) {
+		pb2_value = 0; //bouton NO
+	} else {
+		pb2_value = 1; //bouton NO
+	}
+
   /* USER CODE END EXTI9_5_IRQn 1 */
 }
 
@@ -268,7 +285,22 @@ void TIM2_IRQHandler(void)
   HAL_TIM_IRQHandler(&htim2);
   /* USER CODE BEGIN TIM2_IRQn 1 */
 
-	StepFunction();
+  if (sub_step) {
+	  sub_step = 0;
+	  if (motor_pitch_on) {
+		  HAL_GPIO_WritePin(drive_ports[DRIVE1][DRIVE_STEP],
+		  					drive_pins[DRIVE1][DRIVE_STEP], GPIO_PIN_SET);
+		  //uint16_t reg_config = ReadRegConfig(DRIVE1, 0);
+		  //reg_config = reg_config | 0x0004;
+
+		  //WriteSPI(DRIVE1, DRV8711_CTRL_REG, reg_config);
+	  }
+  } else {
+	  sub_step = 1;
+	  HAL_GPIO_WritePin(drive_ports[DRIVE1][DRIVE_STEP],
+	  				drive_pins[DRIVE1][DRIVE_STEP], GPIO_PIN_RESET);
+  }
+
 
   /* USER CODE END TIM2_IRQn 1 */
 }
@@ -283,54 +315,61 @@ void TIM3_IRQHandler(void)
   /* USER CODE END TIM3_IRQn 0 */
   HAL_TIM_IRQHandler(&htim3);
   /* USER CODE BEGIN TIM3_IRQn 1 */
-	if (counter_50ms > 50) {
-		counter_50ms = 0;
-		timer50ms_flag = 1;
+
+	if (timer_50ms_counter > 50) {
+		timer_50ms_counter = 0;
+		timer_50ms_flag = 1;
 	} else {
-		counter_50ms++;
+		timer_50ms_counter++;
 	}
 
-	if (counter_100ms > 100) {
-		counter_100ms = 0;
-		timer100ms_flag = 1;
+	if (timer_100ms_counter > 100) {
+		timer_100ms_counter = 0;
+		timer_100ms_flag = 1;
 	} else {
-		counter_100ms++;
+		timer_100ms_counter++;
 	}
 
-	if (counter_250ms > 250) {
-		counter_250ms = 0;
-		timer250ms_flag = 1;
+	if (timer_250ms_counter > 250) {
+		timer_250ms_counter = 0;
+		timer_250ms_flag = 1;
 	} else {
-		counter_250ms++;
+		timer_250ms_counter++;
 	}
 
-	if (counter_500ms > 500) {
-		counter_500ms = 0;
-		timer500ms_flag = 1;
+	if (timer_500ms_counter > 500) {
+		timer_500ms_counter = 0;
+		timer_500ms_flag = 1;
 	} else {
-		counter_500ms++;
+		timer_500ms_counter++;
 	}
+
   /* USER CODE END TIM3_IRQn 1 */
 }
 
-/**
-  * @brief This function handles TIM4 global interrupt.
-  */
-void TIM4_IRQHandler(void)
-{
-  /* USER CODE BEGIN TIM4_IRQn 0 */
-
-  /* USER CODE END TIM4_IRQn 0 */
-  HAL_TIM_IRQHandler(&htim4);
-  /* USER CODE BEGIN TIM4_IRQn 1 */
-
-	motor_pitch_on = 1;                 // your action
-	//HAL_TIM_Base_Stop_IT(&htim4);       // stop generating further IRQs
-	//__HAL_TIM_CLEAR_FLAG(&htim4, TIM_FLAG_UPDATE);  // ensure UIF is cleared
-
-  /* USER CODE END TIM4_IRQn 1 */
-}
-
 /* USER CODE BEGIN 1 */
+
+/*
+ // EXTI Line External Interrupt ISR Handler CallBack
+ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+
+ // bouton normalement ouvert GPIO relié au 3V3
+ // quand le bouton est appuyé, le 3V3 devient GND
+
+ if (GPIO_Pin == PB1_Pin) { // PushButton 1
+ if (HAL_GPIO_ReadPin(PB1_GPIO_Port, PB1_Pin) == GPIO_PIN_SET) {
+ pb1_value = 0; //bouton NO
+ } else {
+ pb1_value = 1; //bouton NO
+ }
+ } else if (GPIO_Pin == PB2_Pin) { // PushButton 2
+ if (HAL_GPIO_ReadPin(PB2_GPIO_Port, PB2_Pin) == GPIO_PIN_SET) {
+ pb2_value = 0; //bouton NO
+ } else {
+ pb2_value = 1; //bouton NO
+ }
+ }
+ }
+ */
 
 /* USER CODE END 1 */

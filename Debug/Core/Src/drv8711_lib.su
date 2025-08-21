@@ -1,0 +1,12 @@
+../Core/Src/drv8711_lib.c:68:6:InitRegValuesStepper	16	static
+../Core/Src/drv8711_lib.c:194:10:ReadRegConfig	24	static
+../Core/Src/drv8711_lib.c:229:6:SelectDriveCS	24	static
+../Core/Src/drv8711_lib.c:243:6:UnselectDriveCS	16	static
+../Core/Src/drv8711_lib.c:251:10:TransmitReceiveSPI	40	static
+../Core/Src/drv8711_lib.c:297:10:ReadSPI	24	static
+../Core/Src/drv8711_lib.c:314:6:TransmitSPI	24	static
+../Core/Src/drv8711_lib.c:336:10:WriteSPI	24	static
+../Core/Src/drv8711_lib.c:357:6:SendDriveRegisters	24	static
+../Core/Src/drv8711_lib.c:365:6:ReadAndVerifyDriveRegisters	24	static
+../Core/Src/drv8711_lib.c:413:9:CheckDriveStatusRegister	24	static
+../Core/Src/drv8711_lib.c:432:6:ResetDriveStatusRegister	16	static

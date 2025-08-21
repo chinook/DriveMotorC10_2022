@@ -37,7 +37,14 @@ extern "C" {
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
 
+extern CAN_HandleTypeDef hcan1;
 extern SPI_HandleTypeDef hspi1;
+extern TIM_HandleTypeDef htim4;
+
+extern CAN_TxHeaderTypeDef pTxHeader;
+extern CAN_RxHeaderTypeDef pRxHeader;
+extern uint8_t rxData[8];
+
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -50,52 +57,12 @@ extern SPI_HandleTypeDef hspi1;
 
 /* USER CODE END EM */
 
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
-typedef enum
-{
-	MODE_MANUAL = 0,
-	MODE_AUTOMATIC
-} MOTOR_MODES;
-
-typedef struct MotorStatus_
-{
-	uint8_t enabled;
-	uint8_t request_enable;
-	uint8_t request_disable;
-
-	uint8_t mode;
-
-	// Direction of motor depending on mode
-	uint8_t direction;
-	uint8_t prev_direction;
-
-	// Direction or number of steps depending on motor
-	uint32_t auto_command;
-	uint32_t manual_command;
-} MotorStatus;
-
-typedef struct Motorss_
-{
-	MotorStatus motors[2];
-} Motorss;
-extern Motorss motorss;
-
-extern uint8_t can1_recv_flag;
-extern uint32_t speed_stepper_motor_pitch;
-extern uint32_t can_pitch_motor_direction;
-
-extern CAN_TxHeaderTypeDef pTxHeader;
-extern CAN_RxHeaderTypeDef pRxHeader;
-
-extern uint32_t txMailbox;
-
-
-void delay_us(uint16_t delay16_us);
-void delay_ms(uint16_t delay16_ms);
 
 /* USER CODE END EFP */
 
