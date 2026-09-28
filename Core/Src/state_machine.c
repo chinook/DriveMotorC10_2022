@@ -335,7 +335,8 @@ void ExecuteStateMachine() {
 		 //InitAndConfigDrive(DRIVE1);
 		 //}
 		 //ResetDriveStatusRegister(DRIVE1);
-		 }*/
+		 }
+		*/
 
 		/*
 		 //CheckDriveStatusRegister(DRIVE1);
@@ -362,7 +363,7 @@ void ExecuteStateMachine() {
 
 		 motor_pitch_on = 1;
 		 }
-		 /*
+
 		 else if (flag_can_direction || flag_can_speed) {
 		 if (flag_can_direction) {
 		 flag_can_direction = 0;
@@ -462,6 +463,7 @@ void ExecuteStateMachine() {
 		 default:
 		 current_state = DoStateInit();
 		 break;
-		 };*/
+		 };
+		 */
 	}
 }
