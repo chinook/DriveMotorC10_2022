@@ -1,7 +1,0 @@
-../Core/Src/motor.c:19:6:InitAndConfigDrive	16	static
-../Core/Src/motor.c:40:6:DisableDrive	16	static
-../Core/Src/motor.c:61:6:EnableMotor	24	static
-../Core/Src/motor.c:80:6:DisableMotor	24	static
-../Core/Src/motor.c:100:6:StepDrive	24	static
-../Core/Src/motor.c:124:6:DirectionMotor	16	static
-../Core/Src/motor.c:157:6:StepFunction	8	static

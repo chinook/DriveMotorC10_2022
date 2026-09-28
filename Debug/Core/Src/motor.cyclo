@@ -1,7 +1,0 @@
-../Core/Src/motor.c:19:6:InitAndConfigDrive	1
-../Core/Src/motor.c:40:6:DisableDrive	2
-../Core/Src/motor.c:61:6:EnableMotor	2
-../Core/Src/motor.c:80:6:DisableMotor	2
-../Core/Src/motor.c:100:6:StepDrive	1
-../Core/Src/motor.c:124:6:DirectionMotor	3
-../Core/Src/motor.c:157:6:StepFunction	4
