@@ -84,8 +84,8 @@ all: main-build
 main-build: DriveMoteurC10_2022.elf secondary-outputs
 
 # Tool invocations
-DriveMoteurC10_2022.elf DriveMoteurC10_2022.map: $(OBJS) $(USER_OBJS) C:\chinook\git\DriveMotorC10_2022\STM32F446VETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-g++ -o "DriveMoteurC10_2022.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\chinook\git\DriveMotorC10_2022\STM32F446VETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="DriveMoteurC10_2022.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -lstdc++ -lsupc++ -Wl,--end-group
+DriveMoteurC10_2022.elf DriveMoteurC10_2022.map: $(OBJS) $(USER_OBJS) C:\Chinook\DriveMotorC10_2022\STM32F446VETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-g++ -o "DriveMoteurC10_2022.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Chinook\DriveMotorC10_2022\STM32F446VETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="DriveMoteurC10_2022.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -lstdc++ -lsupc++ -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
