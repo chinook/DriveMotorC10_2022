@@ -24,6 +24,7 @@
 
 #include "chinook_can_ids.h"
 #include "state_machine.h"
+#include "can.h"
 
 /* USER CODE END Includes */
 

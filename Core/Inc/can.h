@@ -11,6 +11,7 @@
 #include "stm32f4xx_hal.h"
 
 void CanInit();
+void ProcessCanMessage();
 
 extern uint8_t flag_can_direction;
 extern uint8_t flag_can_speed;
